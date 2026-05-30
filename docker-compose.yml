@@ -5,14 +5,30 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: raid-helper
+    container_name: discord-raid-helper
     env_file:
       - .env
-    ports:
-      - "3333:3333"
     volumes:
       - raid-helper-data:/app/data
     restart: always
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: discord-raid-helper-caddy
+    depends_on:
+      - raid-helper
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: always
+
 volumes:
   raid-helper-data:
+  caddy-data:
+  caddy-config:

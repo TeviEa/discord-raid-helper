@@ -1,0 +1,9 @@
+{$DOMAIN} {
+    encode zstd gzip
+
+    redir /raid-helper /raid-helper/ 308
+
+    handle_path /raid-helper/* {
+        reverse_proxy raid-helper:3333
+    }
+}
