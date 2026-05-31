@@ -10,9 +10,6 @@ RUN npm ci --omit=dev
 # Copy source files
 COPY --chown=node:node . .
 
-# Persist JSON storage outside the container lifecycle
-VOLUME ["/app/data"]
-
 # App listens on 3333 by default
 EXPOSE 3333
 
