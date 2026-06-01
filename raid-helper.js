@@ -15,16 +15,15 @@ import {
   setDatesReminderChannel,
   setDatesReminderMessage,
   formatDatesReminderMessage,
+  getDatesReminderChannel,
+  getDatesReminderMessage,
   getDueDateReminders as getDueDateRemindersCore,
-  markDateReminderSent,
-  clearSentRemindersForDates,
 } from './raid-reminder.js';
 
 function cleanupPastDatesAndPersist() {
   const removedDates = removePastDates();
 
   if (removedDates.length > 0) {
-    clearSentRemindersForDates(removedDates);
     writeDatesToFile(getRaidDatesSnapshot());
   }
 }
@@ -42,7 +41,8 @@ export {
   setDatesReminderChannel,
   setDatesReminderMessage,
   formatDatesReminderMessage,
-  markDateReminderSent,
+  getDatesReminderChannel,
+  getDatesReminderMessage,
 };
 
 export function saveRaidDates(datesInput) {
@@ -56,10 +56,6 @@ export function saveRaidDates(datesInput) {
 export function deleteRaidDates(datesInput) {
   cleanupPastDatesAndPersist();
   const { deletedDates } = deleteRaidDatesCore(datesInput);
-
-  if (deletedDates.length > 0) {
-    clearSentRemindersForDates(deletedDates);
-  }
 
   writeDatesToFile(getRaidDatesSnapshot());
   return getRaidDatesSnapshot();

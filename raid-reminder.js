@@ -1,14 +1,67 @@
+import { loadData, saveData } from './raid-storage.js';
+
 let reminderHour = 18;
 let reminderMinute = 0;
 let reminderChannelId = null;
 let reminderMessageTemplate = 'Rappel raid: la date {date} est aujourd\'hui.';
-const sentReminderKeys = new Set();
+const REMINDER_TIMEZONE = 'Europe/Paris';
+
+function loadReminderConfig() {
+  const data = loadData();
+  if (data && data.reminder) {
+    const cfg = data.reminder;
+    if (typeof cfg.time === 'string') {
+      const m = /^(\d{2}):(\d{2})$/.exec(cfg.time.trim());
+      if (m) {
+        reminderHour = Number(m[1]);
+        reminderMinute = Number(m[2]);
+      }
+    }
+    if (typeof cfg.channelId === 'string') reminderChannelId = cfg.channelId;
+    if (typeof cfg.message === 'string') reminderMessageTemplate = cfg.message;
+  }
+}
+
+function saveReminderConfig() {
+  const data = loadData();
+  data.dates = Array.isArray(data.dates) ? data.dates : (data.dates ? data.dates : []);
+  data.reminder = {
+    time: `${String(reminderHour).padStart(2, '0')}:${String(reminderMinute).padStart(2, '0')}`,
+    channelId: reminderChannelId,
+    message: reminderMessageTemplate,
+  };
+  saveData(data);
+}
+
+// initialize from disk
+loadReminderConfig();
+
+function getParisDateParts(now = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: REMINDER_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(now);
+  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+
+  return {
+    day: values.day,
+    month: values.month,
+    year: values.year,
+    hour: values.hour,
+    minute: values.minute,
+  };
+}
 
 function getTodayDateString(now = new Date()) {
-  const day = String(now.getDate()).padStart(2, '0');
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const year = String(now.getFullYear() % 100).padStart(2, '0');
-  return `${day}/${month}/${year}`;
+  const { day, month, year } = getParisDateParts(now);
+  return `${day}/${month}/${String(year).slice(-2)}`;
 }
 
 export function setDatesReminderTime(timeInput) {
@@ -30,7 +83,7 @@ export function setDatesReminderTime(timeInput) {
 
   reminderHour = parsedHour;
   reminderMinute = parsedMinute;
-
+  saveReminderConfig();
   return getDatesReminderTime();
 }
 
@@ -44,6 +97,7 @@ export function setDatesReminderChannel(channelId) {
   }
 
   reminderChannelId = channelId;
+  saveReminderConfig();
   return reminderChannelId;
 }
 
@@ -62,6 +116,7 @@ export function setDatesReminderMessage(messageInput) {
   }
 
   reminderMessageTemplate = trimmedMessage;
+  saveReminderConfig();
   return reminderMessageTemplate;
 }
 
@@ -74,7 +129,11 @@ export function getDueDateReminders(hasDate, now = new Date()) {
     throw new TypeError('hasDate must be a function');
   }
 
-  if (now.getHours() !== reminderHour || now.getMinutes() !== reminderMinute) {
+  const parisDate = getParisDateParts(now);
+  const currentHour = Number(parisDate.hour);
+  const currentMinute = Number(parisDate.minute);
+
+  if (currentHour !== reminderHour || currentMinute !== reminderMinute) {
     return [];
   }
 
@@ -91,29 +150,16 @@ export function getDueDateReminders(hasDate, now = new Date()) {
 
   const dueReminders = [];
   for (const channelId of channels) {
-    const reminderKey = `${todayDateString}|${channelId}`;
-    if (!sentReminderKeys.has(reminderKey)) {
-      dueReminders.push({ date: todayDateString, channelId });
-    }
+    dueReminders.push({ date: todayDateString, channelId });
   }
 
   return dueReminders;
 }
 
-export function markDateReminderSent(date, channelId) {
-  sentReminderKeys.add(`${date}|${channelId}`);
+export function getDatesReminderChannel() {
+  return reminderChannelId;
 }
 
-export function clearSentRemindersForDates(dates) {
-  if (!Array.isArray(dates) || dates.length === 0) {
-    return;
-  }
-
-  for (const date of dates) {
-    for (const reminderKey of sentReminderKeys) {
-      if (reminderKey.startsWith(`${date}|`)) {
-        sentReminderKeys.delete(reminderKey);
-      }
-    }
-  }
+export function getDatesReminderMessage() {
+  return reminderMessageTemplate;
 }

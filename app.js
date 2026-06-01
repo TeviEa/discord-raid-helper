@@ -16,8 +16,10 @@ import {
   setDatesReminderMessage,
   formatDatesReminderMessage,
   getDueDateReminders,
-  markDateReminderSent,
   getRaidDatesSnapshot,
+  getDatesReminderTime,
+  getDatesReminderChannel,
+  getDatesReminderMessage,
 } from './raid-helper.js';
 
 // Create an express app
@@ -26,6 +28,7 @@ const app = express();
 const PORT = process.env.PORT || 3333;
 const REMINDER_CHECK_INTERVAL_MS = 3333;
 let reminderLoopRunning = false;
+let lastReminderSentKey = null;
 
 async function sendDueDateReminders() {
   if (reminderLoopRunning) {
@@ -36,6 +39,17 @@ async function sendDueDateReminders() {
   try {
     const dueReminders = getDueDateReminders();
 
+    if (dueReminders.length === 0) {
+      return;
+    }
+
+    const today = dueReminders[0].date;
+    const reminderTime = getDatesReminderTime();
+    const reminderKey = `${today}@${reminderTime}`;
+    if (reminderKey === lastReminderSentKey) {
+      return;
+    }
+
     for (const reminder of dueReminders) {
       await DiscordRequest(`channels/${reminder.channelId}/messages`, {
         method: 'POST',
@@ -43,9 +57,9 @@ async function sendDueDateReminders() {
           content: formatDatesReminderMessage(reminder.date),
         },
       });
-
-      markDateReminderSent(reminder.date, reminder.channelId);
     }
+
+    lastReminderSentKey = reminderKey;
   } catch (error) {
     console.error('Error while sending date reminders', error);
   } finally {
@@ -187,6 +201,18 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
     }
 
     if (name === 'reminder') {
+      if (subcommandName === 'show') {
+        const time = getDatesReminderTime();
+        const channel = getDatesReminderChannel();
+        const message = getDatesReminderMessage();
+
+        return res.send({
+          type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+          data: {
+            content: `Configuration du rappel :\n- heure : ${time}\n- salon : ${channel ? `<#${channel}>` : 'non défini'}\n- message : ${message}`,
+          },
+        });
+      }
       if (subcommandName === 'time') {
         try {
           const timeValue = getSubOptionValue('time');

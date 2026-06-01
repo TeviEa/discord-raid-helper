@@ -99,6 +99,11 @@ const REMINDER_COMMAND = {
         },
       ],
     },
+    {
+      type: 1,
+      name: 'show',
+      description: 'Affiche la configuration actuelle du rappel',
+    },
   ],
   type: 1,
   integration_types: [0, 1],
