@@ -16,4 +16,4 @@ EXPOSE 3333
 # Run as non-root for better security
 USER node
 
-CMD ["sh", "-c", "npm run register && npm start"]
+CMD ["sh", "-c", "node commands.js && exec node app.js"]

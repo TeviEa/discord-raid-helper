@@ -30,6 +30,10 @@ const REMINDER_CHECK_INTERVAL_MS = 3333;
 let reminderLoopRunning = false;
 let lastReminderSentKey = null;
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 async function sendDueDateReminders() {
   if (reminderLoopRunning) {
     return;
