@@ -4,7 +4,7 @@ let reminderHour = 18;
 let reminderMinute = 0;
 let reminderChannelId = null;
 let reminderMessageTemplate = 'Rappel raid: la date {date} est aujourd\'hui.';
-const REMINDER_TIMEZONE = 'Europe/Paris';
+
 
 function loadReminderConfig() {
   const data = loadData();
@@ -36,32 +36,11 @@ function saveReminderConfig() {
 // initialize from disk
 loadReminderConfig();
 
-function getParisDateParts(now = new Date()) {
-  const formatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone: REMINDER_TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-
-  const parts = formatter.formatToParts(now);
-  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
-
-  return {
-    day: values.day,
-    month: values.month,
-    year: values.year,
-    hour: values.hour,
-    minute: values.minute,
-  };
-}
-
 function getTodayDateString(now = new Date()) {
-  const { day, month, year } = getParisDateParts(now);
-  return `${day}/${month}/${String(year).slice(-2)}`;
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = String(now.getFullYear() % 100).padStart(2, '0');
+  return `${day}/${month}/${year}`;
 }
 
 export function setDatesReminderTime(timeInput) {
@@ -129,9 +108,8 @@ export function getDueDateReminders(hasDate, now = new Date()) {
     throw new TypeError('hasDate must be a function');
   }
 
-  const parisDate = getParisDateParts(now);
-  const currentHour = Number(parisDate.hour);
-  const currentMinute = Number(parisDate.minute);
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
 
   if (currentHour !== reminderHour || currentMinute !== reminderMinute) {
     return [];
