@@ -128,7 +128,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: displayRaidDates(),
+              content: `Ajout de ${datesInput}`,
             },
           });
         } catch (error) {
@@ -159,7 +159,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: displayRaidDates(),
+              content: `Supression de ${datesInput}`,
             },
           });
         } catch (error) {
