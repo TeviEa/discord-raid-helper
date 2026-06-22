@@ -30,6 +30,14 @@ const REMINDER_CHECK_INTERVAL_MS = 3333;
 let reminderLoopRunning = false;
 let lastReminderSentKey = null;
 
+function log(...args) {
+  console.log(new Date().toISOString(), ...args);
+}
+
+function error(...args) {
+  console.error(new Date().toISOString(), ...args);
+}
+
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
@@ -61,11 +69,12 @@ async function sendDueDateReminders() {
           content: formatDatesReminderMessage(reminder.date),
         },
       });
+      log(`[reminder] sent for ${reminder.date} to channel ${reminder.channelId}`);
     }
 
     lastReminderSentKey = reminderKey;
   } catch (error) {
-    console.error('Error while sending date reminders', error);
+    error('Error while sending date reminders', error);
   } finally {
     reminderLoopRunning = false;
   }
@@ -311,7 +320,7 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       }
     }
 
-    console.error(`unknown command: ${name}`);
+    error(`unknown command: ${name}`);
     return res.status(400).json({ error: 'unknown command' });
   }
 
@@ -344,19 +353,19 @@ app.post('/interactions', verifyKeyMiddleware(process.env.PUBLIC_KEY), async fun
       });
     }
 
-    console.error('Autocomplete not implemented for', { name, subcommandName });
+    error('Autocomplete not implemented for', { name, subcommandName });
     return res.send({
       type: 8,
       data: { choices: [] },
     });
   }
 
-  console.error('unknown interaction type', type);
+  error('unknown interaction type', type);
   return res.status(400).json({ error: 'unknown interaction type' });
 });
 
 app.listen(PORT, () => {
-  console.log('Listening on port', PORT);
+  log('Listening on port', PORT);
 });
 
 setInterval(sendDueDateReminders, REMINDER_CHECK_INTERVAL_MS);

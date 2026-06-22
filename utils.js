@@ -1,5 +1,13 @@
 import 'dotenv/config';
 
+function log(...args) {
+  console.log(new Date().toISOString(), ...args);
+}
+
+function error(...args) {
+  console.error(new Date().toISOString(), ...args);
+}
+
 export async function DiscordRequest(endpoint, options) {
   // append endpoint to root API URL
   const url = 'https://discord.com/api/v10/' + endpoint;
@@ -17,7 +25,7 @@ export async function DiscordRequest(endpoint, options) {
   // throw API errors
   if (!res.ok) {
     const data = await res.json();
-    console.log(res.status);
+    log(res.status);
     throw new Error(JSON.stringify(data));
   }
   // return original response
@@ -32,6 +40,6 @@ export async function InstallGlobalCommands(appId, commands) {
     // This is calling the bulk overwrite endpoint: https://discord.com/developers/docs/interactions/application-commands#bulk-overwrite-global-application-commands
     await DiscordRequest(endpoint, { method: 'PUT', body: commands });
   } catch (err) {
-    console.error(err);
+    error(err);
   }
 }

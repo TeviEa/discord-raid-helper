@@ -6,13 +6,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR_PATH = path.join(__dirname, 'data');
 const DATES_FILE_PATH = path.join(DATA_DIR_PATH, 'values.json');
+
+function log(...args) {
+  console.log(new Date().toISOString(), ...args);
+}
+
+function error(...args) {
+  console.error(new Date().toISOString(), ...args);
+}
 export function loadData() {
   try {
     if (!fs.existsSync(DATES_FILE_PATH)) return {};
     const raw = fs.readFileSync(DATES_FILE_PATH, 'utf8');
     return JSON.parse(raw) || {};
   } catch (err) {
-    console.error('Unable to read data file', DATES_FILE_PATH, err);
+    error('Unable to read data file', DATES_FILE_PATH, err);
     return {};
   }
 }
@@ -26,7 +34,7 @@ export function saveData(data) {
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tmpPath, DATES_FILE_PATH);
   } catch (err) {
-    console.error('Unable to write data file', DATES_FILE_PATH, err);
+    error('Unable to write data file', DATES_FILE_PATH, err);
   }
 }
 
