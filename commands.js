@@ -63,12 +63,12 @@ const REMINDER_COMMAND = {
     {
       type: 1,
       name: 'time',
-      description: 'Définit l\'heure de rappel',
+      description: 'Définit l\'heure de rappel en UTC',
       options: [
         {
           type: 3,
           name: 'time',
-          description: 'Heure de rappel au format HH:mm (24h)',
+          description: 'Heure de rappel au format HH:mm (24h) en UTC',
           required: true,
         },
       ],
