@@ -288,7 +288,7 @@ async def main():
 
     # Start HTTP server within the existing event loop
     log("Starting server on port", PORT)
-    config = uvicorn.Config(_create_app(), host="0.0.0.0", port=PORT, log_level="warning")
+    config = uvicorn.Config(_create_app(), host="0.0.0.0", port=PORT, log_level="info")
     server = uvicorn.Server(config)
     try:
         await server.serve()
