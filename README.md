@@ -1,89 +1,149 @@
-# Getting Started app for Discord
- 
-### Get app credentials
+# Discord Raid Helper — Python Bot
 
-Fetch the credentials from your app's settings and add them to a `.env` file (see `.env.sample` for an example). You'll need your app ID (`APP_ID`), bot token (`DISCORD_TOKEN`), and public key (`PUBLIC_KEY`).
+A Discord bot for managing raid dates and sending scheduled reminders.
 
-Fetching credentials is covered in detail in the [getting started guide](https://discord.com/developers/docs/getting-started).
+## Prerequisites
 
-> 🔑 Environment variables can be added to the `.env` file in Glitch or when developing locally, and in the Secrets tab in Replit (the lock icon on the left).
+- Python 3.12+
+- A Discord bot token and app ID
+- Docker (optional, for production deployment)
 
-### Install slash commands
+## Setup
 
-The commands for the example app are set up in `commands.js`. All of the commands in the `ALL_COMMANDS` array at the bottom of `commands.js` will be installed when you run the `register` command configured in `package.json`:
+### 1. Get Discord credentials
 
-```
-npm run register
-```
+Fetch the credentials from your [Discord app settings](https://discord.com/developers/applications) and add them to a `.env` file:
 
-### Run the app
-
-After your credentials are added, go ahead and run the app:
-
-```
-node app.js
+```env
+APP_ID=your_app_id
+DISCORD_TOKEN=your_bot_token
+PUBLIC_KEY=your_public_key
 ```
 
-> ⚙️ A package [like `nodemon`](https://github.com/remy/nodemon), which watches for local changes and restarts your app, may be helpful while locally developing.
+### 2. Install dependencies
 
-If you aren't following the [getting started guide](https://discord.com/developers/docs/getting-started), you can move the contents of `examples/app.js` (the finished `app.js` file) to the top-level `app.js`.
-
-### Set up interactivity
-
-The project needs a public endpoint where Discord can send requests. To develop and test locally, you can use something like [`ngrok`](https://ngrok.com/) to tunnel HTTP traffic.
-
-Install ngrok if you haven't already, then start listening on port `3000`:
-
-```
-ngrok http 3000
+```bash
+pip install -r requirements.txt
 ```
 
-You should see your connection open:
+### 3. Register slash commands
 
-```
-Tunnel Status                 online
-Version                       2.0/2.0
-Web Interface                 http://127.0.0.1:4040
-Forwarding                    https://1234-someurl.ngrok.io -> localhost:3000
-
-Connections                  ttl     opn     rt1     rt5     p50     p90
-                              0       0       0.00    0.00    0.00    0.00
+```bash
+python register_commands.py
 ```
 
-Copy the forwarding address that starts with `https`, in this case `https://1234-someurl.ngrok.io`, then go to your [app's settings](https://discord.com/developers/applications).
+This registers all slash commands (`/dates`, `/reminder`) with Discord.
 
-On the **General Information** tab, there will be an **Interactions Endpoint URL**. Paste your ngrok address there, and append `/interactions` to it (`https://1234-someurl.ngrok.io/interactions` in the example).
+### 4. Run the bot
 
-Click **Save Changes**, and your app should be ready to run 🚀
+```bash
+python -m bot.server
+```
 
-## Docker + Caddy (HTTPS)
+The bot listens on port `3333` by default.
 
-The `docker-compose.yml` now includes a Caddy reverse proxy:
-- `raid-helper` stays on internal HTTP over port `3333`
-- `caddy` exposes `80/443` and terminates TLS
-- the Discord app is published under the `/raid-helper` subpath
+## Docker Deployment
 
-### Prerequisites
-
-- A real public domain name pointing to your Raspberry Pi (`A`/`AAAA` DNS record)
-- Ports `80` and `443` open to your Raspberry Pi
+```bash
+docker buildx build --platform linux/arm/v7 -t discord-raid-helper .
+docker run -d \
+  --name discord-raid-helper \
+  --restart always \
+  -p 127.0.0.1:3333:3333 \
+  -v raid-data:/app/data \
+  --env-file .env \
+  discord-raid-helper
+```
 
 ### Configuration
 
-Add `DOMAIN` to your `.env` file with the public domain name pointing to your Raspberry Pi.
+- `DATA_DIR` (env): Path to the data directory (default: `/app/data` in Docker)
+- `PORT` (env): HTTP port (default: `3333`)
 
-### Start
+### Data persistence
+
+The bot stores data in `/app/data/values.json`:
+```json
+{
+  "dates": ["01/06/26"],
+  "reminder": {
+    "time": "18:00",
+    "channelId": "1322266736182952018",
+    "message": "<@&1473624914375344160> on raid ajd ouaaais"
+  }
+}
+```
+
+## Commands
+
+### `/dates`
+
+- `/dates list` — Show upcoming raid dates
+- `/dates add dates: 15/05/26,22/05/26` — Add raid dates (comma, space, or semicolon separated)
+- `/dates delete dates: 15/05/26` — Delete raid dates
+- `/dates max max: 10` — Set maximum number of dates to display
+
+### `/reminder`
+
+- `/reminder show` — Show current reminder configuration
+- `/reminder time time: 18:00` — Set reminder time (HH:mm, 24h format)
+- `/reminder channel channel: 1234567890` — Set reminder channel ID
+- `/reminder message message: Rappel raid aujourd'hui ({date})` — Set reminder message template
+
+## Development
+
+### Run tests
 
 ```bash
-docker compose up -d --build
+python3 -m pytest tests_python/ -v
 ```
 
-### Discord URL
+### Run with uvicorn directly
 
-In the Discord developer portal, configure the interactions endpoint URL as:
-
-```text
-https://<your-domain>/raid-helper/interactions
+```bash
+uvicorn bot.server:_create_app --host 0.0.0.0 --port 3333 --reload
 ```
 
-Caddy automatically strips the `/raid-helper` prefix before proxying the request to the Node app, which can keep listening on `/interactions` internally.
+## Architecture
+
+```
+bot/
+├── __init__.py      # Package init
+├── server.py        # FastAPI server, interaction router, reminder scheduler
+├── business.py      # Business logic coordinator (wires dates, reminders, storage)
+├── dates.py         # Date validation, CRUD, display, sorting
+├── reminder.py      # Reminder config: time, channel, message template
+├── storage.py       # JSON file persistence (atomic writes)
+├── commands.py      # Slash command definitions
+└── discord_api.py   # Discord REST API client (aiohttp)
+```
+
+### Key Design Notes
+
+- **Single source of truth**: `bot/business.py` is the coordinator — all external-facing functions go through it
+- **Storage**: JSON file at `/app/data/values.json`, read on startup, written on mutations. Atomic writes via temp-file-then-rename.
+- **Timezone**: All dates and times use the machine's local timezone. No hardcoded timezone. All date strings are `DD/MM/YY`.
+- **Reminder loop**: Runs every ~3.3s, checks if current local time matches configured reminder time, sends one notification per date per day (debounced via `last_reminder_sent_key`).
+- **Autocomplete**: Implemented for `/dates delete dates` — filters existing dates against user input.
+
+## Troubleshooting
+
+### Command registration fails with 429
+
+The bot retries command registration with exponential backoff (2s, 4s, 8s, 16s, max 30s) up to 5 attempts. If it still fails, check:
+- Your `APP_ID` and `DISCORD_TOKEN` are correct
+- Your bot has the `applications.commands` scope
+- You haven't hit Discord's rate limit (wait a few minutes and try again)
+
+### No dates shown after `/dates list`
+
+Ensure the data file exists at `/app/data/values.json` (or your `DATA_DIR` path) and contains:
+```json
+{
+  "dates": ["15/05/26"]
+}
+```
+
+### Logs not appearing
+
+Check that `uvicorn` log level is set to `info` (default in production). For debug logging, set the `LOG_LEVEL` environment variable.

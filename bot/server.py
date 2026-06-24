@@ -158,7 +158,7 @@ def handle_interaction(body: dict) -> dict:
                 return {
                     "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                     "data": {
-                        "content": f"Configuration du rappel :\n- heure : {time}\n- salon : {channel_str}\n- message : {message}"
+                        "content": f"Configuration du rappel :\n- heure : {time} UTC\n- salon : {channel_str}\n- message : {message}"
                     },
                 }
 
