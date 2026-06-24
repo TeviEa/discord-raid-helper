@@ -173,7 +173,7 @@ def handle_interaction(body: dict) -> dict:
                     updated = business.set_dates_reminder_time(time_value)
                     return {
                         "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Heure de rappel configuree: {updated}"},
+                        "data": {"content": f"Heure de rappel configuree: {updated} UTC"},
                     }
                 except ValueError as e:
                     return {
