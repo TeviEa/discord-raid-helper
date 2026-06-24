@@ -4,7 +4,7 @@ services:
   raid-helper:
     build:
       context: .
-      dockerfile: Dockerfile.python
+      dockerfile: Dockerfile
     container_name: discord-raid-helper
     env_file:
       - .env
