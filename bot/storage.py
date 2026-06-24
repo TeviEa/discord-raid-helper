@@ -9,7 +9,7 @@ __all__ = ["load_data", "save_data", "load_dates_from_file", "write_dates_to_fil
 
 def _get_data_dir_path():
     """Return the path to the data directory."""
-    return os.path.join(os.path.dirname(__file__), "data")
+    return os.environ.get("DATA_DIR", os.path.join(os.path.dirname(__file__), "data"))
 
 
 def _get_data_file_path():
