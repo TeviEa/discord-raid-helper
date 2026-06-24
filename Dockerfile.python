@@ -1,5 +1,8 @@
 FROM python:3.12-slim
 
+# Install build dependencies for PyNaCl (cffi needs gcc + libffi)
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev && rm -rf /var/lib/apt/lists/*
+
 # Create app directory
 WORKDIR /app
 
