@@ -255,9 +255,25 @@ async def start_reminder_loop():
 
 async def register_commands():
     """Register slash commands with Discord."""
-    if APP_ID:
-        await discord_api.install_global_commands(APP_ID, ALL_COMMANDS)
-        log("Slash commands registered")
+    if not APP_ID:
+        return
+
+    import time
+
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            await discord_api.install_global_commands(APP_ID, ALL_COMMANDS)
+            log("Slash commands registered")
+            return
+        except Exception as e:
+            if attempt == max_retries - 1:
+                error("Failed to register commands after", max_retries, "attempts:", e)
+                return
+            # Exponential backoff: 2s, 4s, 8s, 16s
+            wait = min(2 ** (attempt + 1), 30)
+            error("Command registration failed (attempt", attempt + 1, "):", e, "retrying in", wait, "s")
+            await asyncio.sleep(wait)
 
 
 async def main():
@@ -268,11 +284,21 @@ async def main():
     await register_commands()
 
     # Start reminder loop in background
-    asyncio.create_task(start_reminder_loop())
+    reminder_task = asyncio.create_task(start_reminder_loop())
 
-    # Start HTTP server
+    # Start HTTP server within the existing event loop
     log("Starting server on port", PORT)
-    uvicorn.run(_create_app(), host="0.0.0.0", port=PORT)
+    config = uvicorn.Config(_create_app(), host="0.0.0.0", port=PORT, log_level="warning")
+    server = uvicorn.Server(config)
+    try:
+        await server.serve()
+    finally:
+        reminder_task.cancel()
+        try:
+            await reminder_task
+        except asyncio.CancelledError:
+            pass
+        log("Server stopped")
 
 
 def _create_app():
