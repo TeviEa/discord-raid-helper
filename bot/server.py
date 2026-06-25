@@ -288,13 +288,21 @@ async def main():
 
     # Start HTTP server within the existing event loop
     log("Starting server on port", PORT)
+
+    # Configure uvicorn logging with timestamps
+    import logging
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s', datefmt='%Y-%m-%dT%H:%M:%S'))
+    for logger_name in ('uvicorn', 'uvicorn.access', 'uvicorn.error'):
+        logging.getLogger(logger_name).handlers.clear()
+        logging.getLogger(logger_name).addHandler(handler)
+
     config = uvicorn.Config(
         _create_app(),
         host="0.0.0.0",
         port=PORT,
         log_level="info",
-        log_format='%(asctime)s %(levelname)s %(message)s',
-        datefmt='%Y-%m-%dT%H:%M:%S',
     )
     server = uvicorn.Server(config)
     try:
