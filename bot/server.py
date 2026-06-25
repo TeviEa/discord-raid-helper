@@ -19,11 +19,11 @@ last_reminder_sent_key = None
 
 
 def log(*args):
-    print(f"{__import__('datetime').datetime.now().isoformat()} {' '.join(str(a) for a in args)}")
+    print(f"{__import__('datetime').datetime.now().isoformat()} {' '.join(str(a) for a in args)}", flush=True)
 
 
 def error(*args):
-    print(f"{__import__('datetime').datetime.now().isoformat()} ERROR {' '.join(str(a) for a in args)}")
+    print(f"{__import__('datetime').datetime.now().isoformat()} ERROR {' '.join(str(a) for a in args)}", flush=True)
 
 
 async def send_due_date_reminders():
@@ -288,7 +288,14 @@ async def main():
 
     # Start HTTP server within the existing event loop
     log("Starting server on port", PORT)
-    config = uvicorn.Config(_create_app(), host="0.0.0.0", port=PORT, log_level="info")
+    config = uvicorn.Config(
+        _create_app(),
+        host="0.0.0.0",
+        port=PORT,
+        log_level="info",
+        log_format='%(asctime)s %(levelname)s %(message)s',
+        datefmt='%Y-%m-%dT%H:%M:%S',
+    )
     server = uvicorn.Server(config)
     try:
         await server.serve()

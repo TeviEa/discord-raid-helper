@@ -26,7 +26,7 @@ def load_data() -> dict:
         with open(data_file, "r", encoding="utf-8") as f:
             return json.loads(f.read()) or {}
     except Exception as e:
-        print(f"[{__name__}] Unable to read data file {_get_data_file_path()}: {e}")
+        print(f"[{__name__}] Unable to read data file {_get_data_file_path()}: {e}", flush=True)
         return {}
 
 
@@ -47,7 +47,7 @@ def save_data(data: dict) -> None:
             os.unlink(tmp_path)
             raise
     except Exception as e:
-        print(f"[{__name__}] Unable to write data file {_get_data_file_path()}: {e}")
+        print(f"[{__name__}] Unable to write data file {_get_data_file_path()}: {e}", flush=True)
 
 
 def load_dates_from_file() -> list:
