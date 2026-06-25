@@ -1,6 +1,5 @@
-node_modules
-.data
 .env
+.data
 .pi
 __pycache__
 *.pyc
