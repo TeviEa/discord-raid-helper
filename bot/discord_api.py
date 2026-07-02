@@ -12,8 +12,8 @@ DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 USER_AGENT = "DiscordBot (https://github.com/discord/discord-example-app, 1.0.0)"
 
 
-async def discord_request(endpoint: str, method: str = "GET", body: dict | None = None) -> aiohttp.ClientResponse:
-    """Make a request to the Discord API."""
+async def discord_request(endpoint: str, method: str = "GET", body: dict | None = None) -> dict:
+    """Make a request to the Discord API and return the parsed JSON body."""
     url = f"{BASE_URL}/{endpoint}"
     headers = {
         "Authorization": f"Bot {DISCORD_TOKEN}",
@@ -27,7 +27,7 @@ async def discord_request(endpoint: str, method: str = "GET", body: dict | None 
                 data = await resp.json()
                 print(f"[{__name__}] Discord API error: {resp.status}")
                 raise Exception(json.dumps(data))
-            return resp
+            return await resp.json()
 
 
 async def install_global_commands(app_id: str, commands: list[dict]) -> None:

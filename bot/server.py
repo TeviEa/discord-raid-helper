@@ -62,7 +62,7 @@ async def send_due_date_reminders():
         reminder_loop_running = False
 
 
-def handle_interaction(body: dict) -> dict:
+async def handle_interaction(body: dict) -> dict:
     """Handle a Discord interaction and return the response."""
     global last_reminder_sent_key
 
@@ -219,6 +219,86 @@ def handle_interaction(body: dict) -> dict:
                         "data": {"content": f"Erreur: {e}"},
                     }
 
+        # --- /calendar ---
+        if name == "calendar":
+            if subcommand_name == "channel":
+                try:
+                    channel_value = get_sub_option("channel")
+                    if not channel_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /calendar channel channel: #general"},
+                        }
+                    updated = business.set_calendar_channel(str(channel_value))
+                    # Post the calendar message in the new channel
+                    result = await business.post_calendar_message()
+                    if result:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": f"Calendrier poste dans <#{updated}>"},
+                        }
+                    else:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": f"Calendrier configure pour <#{updated}>, mais echec de la publication"},
+                        }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "title":
+                try:
+                    title_value = get_sub_option("title")
+                    if not title_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /calendar title title: Calendrier des raids"},
+                        }
+                    updated = business.set_calendar_message(title_value)
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Titre du calendrier configure: {updated}"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "color":
+                try:
+                    color_value = get_sub_option("color")
+                    if color_value is None:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /calendar color color: 16711680"},
+                        }
+                    updated = business.set_calendar_color(int(color_value))
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Couleur du calendrier configuree: 0x{updated:06X}"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "delete":
+                deleted = await business.delete_calendar_message()
+                if deleted:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": "Calendrier supprime"},
+                    }
+                else:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": "Aucun calendrier a supprimer"},
+                    }
+
         error(f"unknown command: {name}")
         return {"error": "unknown command"}
 
@@ -327,7 +407,7 @@ def _create_app():
             return Response(status_code=401)
 
         try:
-            result = handle_interaction(body)
+            result = await handle_interaction(body)
             return JSONResponse(content=result)
         except Exception as e:
             error("Interaction handler error:", e)

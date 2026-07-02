@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from . import dates, storage, reminder
+from . import dates, storage, reminder, calendar
 
 
 def _cleanup_past_dates_and_persist() -> None:
@@ -13,10 +13,16 @@ def _cleanup_past_dates_and_persist() -> None:
 
 
 def init_raid_helper() -> None:
-    """Initialize the bot: load data from disk, clean up past dates."""
+    """Initialize the bot: load data from disk, clean up past dates, restore calendar config."""
     stored = storage.load_dates_from_file()
     dates.hydrate_raid_dates(stored)
     _cleanup_past_dates_and_persist()
+
+    config = calendar._load_calendar_config()
+    calendar._calendar_channel_id = config.get("channelId")
+    calendar._calendar_message_id = config.get("messageId")
+    calendar._calendar_title = config.get("title", "Calendrier des raids")
+    calendar._calendar_color = config.get("color", 0x3B82F6)
 
 
 def save_raid_dates(dates_input: str) -> list[str]:
@@ -25,6 +31,7 @@ def save_raid_dates(dates_input: str) -> list[str]:
     dates.save_raid_dates(dates_input)
     _cleanup_past_dates_and_persist()
     storage.write_dates_to_file(dates.get_raid_dates_snapshot())
+    _schedule_calendar_update()
     return dates.get_raid_dates_snapshot()
 
 
@@ -33,7 +40,22 @@ def delete_raid_dates(dates_input: str) -> list[str]:
     _cleanup_past_dates_and_persist()
     dates.delete_raid_dates(dates_input)
     storage.write_dates_to_file(dates.get_raid_dates_snapshot())
+    _schedule_calendar_update()
     return dates.get_raid_dates_snapshot()
+
+
+# Track pending calendar update tasks to avoid duplicates
+_calendar_update_task = None
+
+
+def _schedule_calendar_update() -> None:
+    """Schedule a background calendar update if one is not already pending."""
+    global _calendar_update_task
+    if _calendar_update_task is not None and not _calendar_update_task.done():
+        return
+    import asyncio
+
+    _calendar_update_task = asyncio.create_task(calendar.update_calendar_message())
 
 
 def display_raid_dates() -> str:
@@ -59,6 +81,26 @@ from .reminder import (
     get_dates_reminder_channel,
     get_dates_reminder_message,
 )
+from .calendar import (
+    set_calendar_channel,
+    get_calendar_channel,
+    set_calendar_title,
+    get_calendar_title,
+    set_calendar_color,
+    get_calendar_color,
+    build_calendar_embed,
+    post_calendar_message,
+    delete_calendar_message,
+    update_calendar_message,
+    get_calendar_config,
+)
+
+
+def set_calendar_message(message: str) -> str:
+    """Set the calendar embed title and update the posted message."""
+    updated = calendar.set_calendar_title(message)
+    _schedule_calendar_update()
+    return updated
 
 # Initialize on import
 init_raid_helper()

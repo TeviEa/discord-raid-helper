@@ -1,0 +1,14 @@
+{
+  "dates": [],
+  "reminder": {
+    "time": "08:00",
+    "channelId": "123456789",
+    "message": "On raid aujourd'hui !"
+  },
+  "calendar": {
+    "channelId": "123456789",
+    "messageId": null,
+    "title": "Calendrier des raids",
+    "color": 3900150
+  }
+}

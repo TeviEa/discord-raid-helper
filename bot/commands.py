@@ -109,4 +109,58 @@ REMINDER_COMMAND = {
     "contexts": [0, 1, 2],
 }
 
-ALL_COMMANDS = [DATES_COMMAND, REMINDER_COMMAND]
+CALENDAR_COMMAND = {
+    "name": "calendar",
+    "description": "Gestion du calendrier de raids",
+    "options": [
+        {
+            "type": 1,  # Subcommand
+            "name": "channel",
+            "description": "Definit le channel ou poster le calendrier",
+            "options": [
+                {
+                    "type": 7,  # Channel
+                    "name": "channel",
+                    "description": "Channel pour le calendrier",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "title",
+            "description": "Definit le titre du calendrier",
+            "options": [
+                {
+                    "type": 3,  # String
+                    "name": "title",
+                    "description": "Titre du calendrier (max 256 caracteres)",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "color",
+            "description": "Definit la couleur du calendrier",
+            "options": [
+                {
+                    "type": 4,  # Integer
+                    "name": "color",
+                    "description": "Couleur hexadecimal (ex: 16711680 pour rouge)",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "delete",
+            "description": "Supprime le message du calendrier actuel",
+        },
+    ],
+    "type": 1,  # SubcommandGroup
+    "integration_types": [0, 1],
+    "contexts": [0, 1, 2],
+}
+
+ALL_COMMANDS = [DATES_COMMAND, REMINDER_COMMAND, CALENDAR_COMMAND]
