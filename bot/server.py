@@ -3,18 +3,17 @@
 import asyncio
 import json
 import os
+from datetime import datetime
 
 from discord_interactions import InteractionResponseType, InteractionType, verify_key
 
-from . import business, discord_api
+from . import business, calendar, dates, discord_api, reminder
 from .commands import ALL_COMMANDS
 
 PORT = int(os.environ.get("PORT", 3333))
 PUBLIC_KEY = os.environ.get("PUBLIC_KEY", "")
 APP_ID = os.environ.get("APP_ID", "")
-REMINDER_CHECK_INTERVAL = 3.333  # seconds
 
-reminder_loop_running = False
 last_reminder_sent_key = None
 
 
@@ -26,43 +25,98 @@ def error(*args):
     print(f"{__import__('datetime').datetime.now().isoformat()} ERROR {' '.join(str(a) for a in args)}")
 
 
-async def send_due_date_reminders():
-    """Periodically check and send due reminders."""
-    global reminder_loop_running, last_reminder_sent_key
+async def send_reminder_if_today_is_raid() -> bool:
+    """If today is a raid date, wait until the reminder time and send the reminder.
 
-    if reminder_loop_running:
-        return
+    Returns:
+        True if the reminder was sent, False otherwise.
+    """
+    global last_reminder_sent_key
 
-    reminder_loop_running = True
+    from . import reminder
+
+    today = dates.get_today_date_string()
+    if not dates.has_raid_date(today):
+        return False
+
+    reminder_time = reminder.get_dates_reminder_time()
+    reminder_key = f"{today}@{reminder_time}"
+
+    if reminder_key == last_reminder_sent_key:
+        return False
+
+    # Calculate seconds until reminder time
+    now = datetime.now()
+    current_seconds = now.hour * 3600 + now.minute * 60 + now.second
+    reminder_seconds = reminder.reminder_hour * 3600 + reminder.reminder_minute * 60
+
+    if reminder_seconds > current_seconds:
+        # Reminder time is still today
+        wait_seconds = reminder_seconds - current_seconds
+    else:
+        # Reminder time has passed today, skip it
+        log(f"[reminder] reminder time {reminder_time} has passed for {today}, skipping")
+        return False
+
+    log(f"[reminder] waiting {wait_seconds:.0f}s for reminder at {reminder_time} for {today}")
+    await asyncio.sleep(wait_seconds)
+
+    # Send the reminder
+    channel_id = reminder.reminder_channel_id
+    if not channel_id:
+        return False
+
     try:
-        due_reminders = business.get_due_date_reminders()
-
-        if not due_reminders:
-            return
-
-        today = due_reminders[0]["date"]
-        reminder_time = business.get_dates_reminder_time()
-        reminder_key = f"{today}@{reminder_time}"
-
-        if reminder_key == last_reminder_sent_key:
-            return
-
-        for reminder in due_reminders:
-            await discord_api.discord_request(
-                f"channels/{reminder['channelId']}/messages",
-                method="POST",
-                body={"content": business.format_dates_reminder_message(reminder["date"])},
-            )
-            log(f"[reminder] sent for {reminder['date']} to channel {reminder['channelId']}")
-
+        await discord_api.discord_request(
+            f"channels/{channel_id}/messages",
+            method="POST",
+            body={"content": reminder.format_dates_reminder_message(today)},
+        )
+        log(f"[reminder] sent for {today} to channel {channel_id}")
         last_reminder_sent_key = reminder_key
+        return True
     except Exception as e:
-        error("Error while sending date reminders", e)
-    finally:
-        reminder_loop_running = False
+        error("Error while sending reminder", e)
+        return False
 
 
-def handle_interaction(body: dict) -> dict:
+async def daily_check() -> None:
+    """Run the daily check: cleanup past dates, update calendar, schedule reminder."""
+    from . import dates, reminder
+
+    log("[daily] running daily check")
+
+    # 1. Cleanup past dates
+    business._cleanup_past_dates_and_persist()
+
+    # 2. Update calendar
+    if calendar._calendar_channel_id:
+        await calendar.update_calendar_message()
+        log("[daily] calendar updated")
+
+    # 3. If today is a raid date, schedule the reminder
+    if dates.has_raid_date(dates.get_today_date_string()):
+        sent = await send_reminder_if_today_is_raid()
+        if sent:
+            log("[daily] reminder sent for today")
+        else:
+            log("[daily] reminder skipped (time has passed)")
+    else:
+        log("[daily] today is not a raid date")
+
+
+async def daily_check_loop() -> None:
+    """Run the daily check loop: wait until midnight, then run daily_check()."""
+    while True:
+        now = datetime.now()
+        # Wait until midnight
+        seconds_until_midnight = (24 - now.hour) * 3600 - now.minute * 60 - now.second
+        log(f"[daily] next check in {seconds_until_midnight:.0f}s")
+        await asyncio.sleep(seconds_until_midnight)
+        await daily_check()
+
+
+async def handle_interaction(body: dict) -> dict:
     """Handle a Discord interaction and return the response."""
     global last_reminder_sent_key
 
@@ -219,6 +273,86 @@ def handle_interaction(body: dict) -> dict:
                         "data": {"content": f"Erreur: {e}"},
                     }
 
+        # --- /calendar ---
+        if name == "calendar":
+            if subcommand_name == "channel":
+                try:
+                    channel_value = get_sub_option("channel")
+                    if not channel_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /calendar channel channel: #general"},
+                        }
+                    updated = business.set_calendar_channel(str(channel_value))
+                    # Post the calendar message in the new channel
+                    result = await business.post_calendar_message()
+                    if result:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": f"Calendrier poste dans <#{updated}>"},
+                        }
+                    else:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": f"Calendrier configure pour <#{updated}>, mais echec de la publication"},
+                        }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "title":
+                try:
+                    title_value = get_sub_option("title")
+                    if not title_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /calendar title title: Calendrier des raids"},
+                        }
+                    updated = business.set_calendar_message(title_value)
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Titre du calendrier configure: {updated}"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "color":
+                try:
+                    color_value = get_sub_option("color")
+                    if color_value is None:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /calendar color color: 16711680"},
+                        }
+                    updated = business.set_calendar_color(int(color_value))
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Couleur du calendrier configuree: 0x{updated:06X}"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "delete":
+                deleted = await business.delete_calendar_message()
+                if deleted:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": "Calendrier supprime"},
+                    }
+                else:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": "Aucun calendrier a supprimer"},
+                    }
+
         error(f"unknown command: {name}")
         return {"error": "unknown command"}
 
@@ -283,8 +417,11 @@ async def main():
     # Register commands on startup
     await register_commands()
 
-    # Start reminder loop in background
-    reminder_task = asyncio.create_task(start_reminder_loop())
+    # Run daily check immediately (catches up if bot was down)
+    asyncio.create_task(daily_check())
+
+    # Start daily check loop in background
+    asyncio.create_task(daily_check_loop())
 
     # Start HTTP server within the existing event loop
     log("Starting server on port", PORT)
@@ -293,11 +430,6 @@ async def main():
     try:
         await server.serve()
     finally:
-        reminder_task.cancel()
-        try:
-            await reminder_task
-        except asyncio.CancelledError:
-            pass
         log("Server stopped")
 
 
@@ -327,7 +459,7 @@ def _create_app():
             return Response(status_code=401)
 
         try:
-            result = handle_interaction(body)
+            result = await handle_interaction(body)
             return JSONResponse(content=result)
         except Exception as e:
             error("Interaction handler error:", e)
