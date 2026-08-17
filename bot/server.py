@@ -27,6 +27,8 @@ def error(*args):
 
 async def send_reminder_if_today_is_raid() -> None:
     """If today is a raid date, wait until the reminder time and send the reminder."""
+    global last_reminder_sent_key
+
     from . import reminder
 
     today = dates.get_today_date_string()
