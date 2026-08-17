@@ -30,7 +30,7 @@ async def send_reminder_if_today_is_raid() -> None:
     from . import reminder
 
     today = dates.get_today_date_string()
-    if not business.has_raid_date(today):
+    if not dates.has_raid_date(today):
         return
 
     reminder_time = reminder.get_dates_reminder_time()
@@ -87,7 +87,7 @@ async def daily_check() -> None:
         log("[daily] calendar updated")
 
     # 3. If today is a raid date, schedule the reminder
-    if business.has_raid_date(dates.get_today_date_string()):
+    if dates.has_raid_date(dates.get_today_date_string()):
         await send_reminder_if_today_is_raid()
         log("[daily] reminder scheduled for today")
     else:
