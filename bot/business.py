@@ -12,6 +12,16 @@ def _cleanup_past_dates_and_persist() -> None:
         storage.write_dates_to_file(dates.get_raid_dates_snapshot())
 
 
+def daily_check() -> bool:
+    """Run the daily check: cleanup past dates and update calendar.
+
+    Returns:
+        True if today is a raid date, False otherwise.
+    """
+    _cleanup_past_dates_and_persist()
+    return dates.has_raid_date(dates.get_today_date_string())
+
+
 def init_raid_helper() -> None:
     """Initialize the bot: load data from disk, clean up past dates, restore calendar config."""
     stored = storage.load_dates_from_file()

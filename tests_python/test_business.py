@@ -67,3 +67,25 @@ class TestSetCalendarTitleTriggersUpdate:
                 result = business.set_calendar_message("New template")
                 assert result == "New template"
                 assert business._calendar_update_task is not None
+
+
+class TestDailyCheck:
+    """Tests for daily_check business function."""
+
+    def test_cleans_past_dates(self):
+        with patch("bot.business._cleanup_past_dates_and_persist") as mock_cleanup:
+            with patch.object(business.dates, "has_raid_date", return_value=True):
+                business.daily_check()
+                mock_cleanup.assert_called_once()
+
+    def test_returns_true_when_today_is_raid_date(self):
+        with patch("bot.business._cleanup_past_dates_and_persist"), \
+             patch.object(business.dates, "has_raid_date", return_value=True):
+            result = business.daily_check()
+            assert result is True
+
+    def test_returns_false_when_today_is_not_raid_date(self):
+        with patch("bot.business._cleanup_past_dates_and_persist"), \
+             patch.object(business.dates, "has_raid_date", return_value=False):
+            result = business.daily_check()
+            assert result is False
