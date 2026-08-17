@@ -25,21 +25,25 @@ def error(*args):
     print(f"{__import__('datetime').datetime.now().isoformat()} ERROR {' '.join(str(a) for a in args)}")
 
 
-async def send_reminder_if_today_is_raid() -> None:
-    """If today is a raid date, wait until the reminder time and send the reminder."""
+async def send_reminder_if_today_is_raid() -> bool:
+    """If today is a raid date, wait until the reminder time and send the reminder.
+
+    Returns:
+        True if the reminder was sent, False otherwise.
+    """
     global last_reminder_sent_key
 
     from . import reminder
 
     today = dates.get_today_date_string()
     if not dates.has_raid_date(today):
-        return
+        return False
 
     reminder_time = reminder.get_dates_reminder_time()
     reminder_key = f"{today}@{reminder_time}"
 
     if reminder_key == last_reminder_sent_key:
-        return
+        return False
 
     # Calculate seconds until reminder time
     now = datetime.now()
@@ -52,7 +56,7 @@ async def send_reminder_if_today_is_raid() -> None:
     else:
         # Reminder time has passed today, skip it
         log(f"[reminder] reminder time {reminder_time} has passed for {today}, skipping")
-        return
+        return False
 
     log(f"[reminder] waiting {wait_seconds:.0f}s for reminder at {reminder_time} for {today}")
     await asyncio.sleep(wait_seconds)
@@ -60,7 +64,7 @@ async def send_reminder_if_today_is_raid() -> None:
     # Send the reminder
     channel_id = reminder.reminder_channel_id
     if not channel_id:
-        return
+        return False
 
     try:
         await discord_api.discord_request(
@@ -70,8 +74,10 @@ async def send_reminder_if_today_is_raid() -> None:
         )
         log(f"[reminder] sent for {today} to channel {channel_id}")
         last_reminder_sent_key = reminder_key
+        return True
     except Exception as e:
         error("Error while sending reminder", e)
+        return False
 
 
 async def daily_check() -> None:
@@ -90,8 +96,11 @@ async def daily_check() -> None:
 
     # 3. If today is a raid date, schedule the reminder
     if dates.has_raid_date(dates.get_today_date_string()):
-        await send_reminder_if_today_is_raid()
-        log("[daily] reminder scheduled for today")
+        sent = await send_reminder_if_today_is_raid()
+        if sent:
+            log("[daily] reminder sent for today")
+        else:
+            log("[daily] reminder skipped (time has passed)")
     else:
         log("[daily] today is not a raid date")
 
