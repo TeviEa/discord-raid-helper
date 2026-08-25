@@ -163,4 +163,112 @@ CALENDAR_COMMAND = {
     "contexts": [0, 1, 2],
 }
 
-ALL_COMMANDS = [DATES_COMMAND, REMINDER_COMMAND, CALENDAR_COMMAND]
+DAY_CHOICES = [
+    {"name": "Monday", "value": "monday"},
+    {"name": "Tuesday", "value": "tuesday"},
+    {"name": "Wednesday", "value": "wednesday"},
+    {"name": "Thursday", "value": "thursday"},
+    {"name": "Friday", "value": "friday"},
+    {"name": "Saturday", "value": "saturday"},
+    {"name": "Sunday", "value": "sunday"},
+]
+
+PAUSE_CHOICES = [
+    {"name": "On", "value": "on"},
+    {"name": "Off", "value": "off"},
+]
+
+POLL_COMMAND = {
+    "name": "poll",
+    "description": "Gestion du sondage de raid hebdomadaire",
+    "options": [
+        {
+            "type": 1,  # Subcommand
+            "name": "day",
+            "description": "Definit le jour de la semaine du sondage",
+            "options": [
+                {
+                    "type": 3,  # String
+                    "name": "day",
+                    "description": "Jour de la semaine (Mon, Tue, ...)",
+                    "required": True,
+                    "autocomplete": True,
+                },
+            ],
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "pause",
+            "description": "Pause ou reprise du sondage",
+            "options": [
+                {
+                    "type": 3,  # String
+                    "name": "state",
+                    "description": "On ou Off",
+                    "required": True,
+                    "autocomplete": True,
+                },
+                {
+                    "type": 3,  # String
+                    "name": "until",
+                    "description": "Date de fin de pause (dd/mm/yy) ou vide",
+                    "required": False,
+                },
+            ],
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "channel",
+            "description": "Definit le channel du sondage",
+            "options": [
+                {
+                    "type": 7,  # Channel
+                    "name": "channel",
+                    "description": "Channel du sondage",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "message",
+            "description": "Definit le message du sondage",
+            "options": [
+                {
+                    "type": 3,  # String
+                    "name": "message",
+                    "description": "Message du sondage",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "show",
+            "description": "Affiche la configuration actuelle du sondage",
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "send",
+            "description": "Envoie le sondage maintenant (pour tests)",
+        },
+        {
+            "type": 1,  # Subcommand
+            "name": "ping",
+            "description": "Definit le role a mentionner apres le sondage",
+            "options": [
+                {
+                    "type": 8,  # Role
+                    "name": "role",
+                    "description": "Role a mentionner (vide pour desactiver)",
+                    "required": False,
+                },
+            ],
+        },
+    ],
+    "type": 1,  # SubcommandGroup
+    "integration_types": [0, 1],
+    "contexts": [0, 1, 2],
+}
+
+ALL_COMMANDS = [DATES_COMMAND, REMINDER_COMMAND, CALENDAR_COMMAND, POLL_COMMAND]

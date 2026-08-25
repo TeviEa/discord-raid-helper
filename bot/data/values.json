@@ -10,5 +10,15 @@
     "messageId": null,
     "title": "Calendrier des raids",
     "color": 3900150
+  },
+  "poll": {
+    "day": "tuesday",
+    "channelId": "123456789",
+    "message": "Test",
+    "pause": {
+      "enabled": false,
+      "until": ""
+    },
+    "pingRole": null
   }
 }

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from . import dates, storage, reminder, calendar
+from . import dates, storage, reminder, calendar, poll
 
 
 def _cleanup_past_dates_and_persist() -> None:
@@ -13,7 +13,7 @@ def _cleanup_past_dates_and_persist() -> None:
 
 
 def daily_check() -> bool:
-    """Run the daily check: cleanup past dates and update calendar.
+    """Run the daily check: cleanup past dates, update calendar, and send poll.
 
     Returns:
         True if today is a raid date, False otherwise.
@@ -23,7 +23,7 @@ def daily_check() -> bool:
 
 
 def init_raid_helper() -> None:
-    """Initialize the bot: load data from disk, clean up past dates, restore calendar config."""
+    """Initialize the bot: load data from disk, clean up past dates, restore calendar and poll config."""
     stored = storage.load_dates_from_file()
     dates.hydrate_raid_dates(stored)
     _cleanup_past_dates_and_persist()
@@ -33,6 +33,8 @@ def init_raid_helper() -> None:
     calendar._calendar_message_id = config.get("messageId")
     calendar._calendar_title = config.get("title", "Calendrier des raids")
     calendar._calendar_color = config.get("color", 0x3B82F6)
+
+    poll.init_poll()
 
 
 def save_raid_dates(dates_input: str) -> list[str]:
@@ -103,6 +105,23 @@ from .calendar import (
     delete_calendar_message,
     update_calendar_message,
     get_calendar_config,
+)
+from .poll import (
+    set_poll_day,
+    get_poll_day,
+    set_poll_channel,
+    get_poll_channel,
+    set_poll_message,
+    get_poll_message,
+    set_poll_pause,
+    get_poll_pause,
+    set_poll_pause_until,
+    get_poll_pause_until,
+    set_poll_ping_role,
+    get_poll_ping_role,
+    build_poll_message,
+    post_poll_message,
+    get_poll_config,
 )
 
 

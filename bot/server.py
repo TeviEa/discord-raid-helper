@@ -7,14 +7,15 @@ from datetime import datetime
 
 from discord_interactions import InteractionResponseType, InteractionType, verify_key
 
-from . import business, calendar, dates, discord_api, reminder
-from .commands import ALL_COMMANDS
+from . import business, calendar, dates, discord_api, poll, reminder
+from .commands import ALL_COMMANDS, DAY_CHOICES, PAUSE_CHOICES
 
 PORT = int(os.environ.get("PORT", 3333))
 PUBLIC_KEY = os.environ.get("PUBLIC_KEY", "")
 APP_ID = os.environ.get("APP_ID", "")
 
 last_reminder_sent_key = None
+last_poll_sent_key = None
 
 
 def log(*args):
@@ -80,8 +81,69 @@ async def send_reminder_if_today_is_raid() -> bool:
         return False
 
 
+async def send_poll_if_today_is_configured() -> bool:
+    """If today is the configured poll day, wait until the poll send time and send the poll.
+
+    Returns:
+        True if the poll was sent, False otherwise.
+    """
+    global last_poll_sent_key
+
+    today = dates.get_today_date_string()
+    poll_key = f"{today}"
+
+    if poll_key == last_poll_sent_key:
+        return False
+
+    # Check if today is the configured poll day
+    if not poll._poll_day:
+        return False
+
+    day_of_week = datetime.now().weekday()  # 0=Monday, 6=Sunday
+    target_day = poll._DAY_MAP.get(poll._poll_day, -1)
+    if day_of_week != target_day:
+        return False
+
+    # Check pause status
+    if poll._poll_pause_enabled:
+        return False
+
+    # Check channel is configured
+    if not poll._poll_channel_id:
+        return False
+
+    # Calculate seconds until poll send time
+    now = datetime.now()
+    current_seconds = now.hour * 3600 + now.minute * 60 + now.second
+    poll_seconds = poll._POLL_SEND_HOUR * 3600 + poll._POLL_SEND_MINUTE * 60
+
+    if poll_seconds > current_seconds:
+        # Poll time is still today
+        wait_seconds = poll_seconds - current_seconds
+    else:
+        # Poll time has passed today, skip it
+        log(f"[poll] poll time {poll._POLL_SEND_HOUR:02d}:{poll._POLL_SEND_MINUTE:02d} has passed for {today}, skipping")
+        return False
+
+    log(f"[poll] waiting {wait_seconds:.0f}s for poll at {poll._POLL_SEND_HOUR:02d}:{poll._POLL_SEND_MINUTE:02d} for {today}")
+    await asyncio.sleep(wait_seconds)
+
+    # Send the poll
+    try:
+        result = await poll.post_poll_message()
+        if result:
+            log(f"[poll] sent for {today} to channel {poll._poll_channel_id}")
+            last_poll_sent_key = poll_key
+            return True
+        else:
+            return False
+    except Exception as e:
+        error("Error while sending poll", e)
+        return False
+
+
 async def daily_check() -> None:
-    """Run the daily check: cleanup past dates, update calendar, schedule reminder."""
+    """Run the daily check: cleanup past dates, update calendar, schedule reminder, schedule poll."""
     from . import dates, reminder
 
     log("[daily] running daily check")
@@ -103,6 +165,13 @@ async def daily_check() -> None:
             log("[daily] reminder skipped (time has passed)")
     else:
         log("[daily] today is not a raid date")
+
+    # 4. Send poll if today is the configured day
+    sent = await send_poll_if_today_is_configured()
+    if sent:
+        log("[daily] poll sent for today")
+    else:
+        log("[daily] poll skipped (not configured day or time has passed)")
 
 
 async def daily_check_loop() -> None:
@@ -353,6 +422,147 @@ async def handle_interaction(body: dict) -> dict:
                         "data": {"content": "Aucun calendrier a supprimer"},
                     }
 
+        # --- /poll ---
+        if name == "poll":
+            if subcommand_name == "show":
+                day = business.get_poll_day()
+                channel = business.get_poll_channel()
+                message = business.get_poll_message()
+                pause_enabled = business.get_poll_pause()
+                pause_until = business.get_poll_pause_until()
+                ping_role = business.get_poll_ping_role()
+                channel_str = f"<#{channel}>" if channel else "non defini"
+                pause_status = "en pause" if pause_enabled else "actif"
+                pause_until_str = pause_until if pause_until else "jamais"
+                ping_str = f"<@&{ping_role}>" if ping_role else "desactive"
+                return {
+                    "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                    "data": {
+                        "content": f"Configuration du sondage :\n- jour : {day}\n- salon : {channel_str}\n- message : {message}\n- statut : {pause_status} (jusqu'au {pause_until_str})\n- ping role : {ping_str}"
+                    },
+                }
+
+            if subcommand_name == "day":
+                try:
+                    day_value = get_sub_option("day")
+                    if not day_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /poll day jour: mardi"},
+                        }
+                    updated = business.set_poll_day(day_value)
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Jour du sondage configure: {updated}"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "pause":
+                try:
+                    pause_value = get_sub_option("state")
+                    until_value = get_sub_option("until") or ""
+                    if not pause_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /poll pause etat: on|off [jusqua: dd/mm/yy]"},
+                        }
+                    if pause_value.lower() == "on":
+                        if until_value:
+                            business.set_poll_pause_until(until_value)
+                        business.set_poll_pause(True)
+                        until_str = f" jusqu'au {until_value}" if until_value else ""
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": f"Sondage pause{until_str}"},
+                        }
+                    else:
+                        business.set_poll_pause(False)
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Sondage repris"},
+                        }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "channel":
+                try:
+                    channel_value = get_sub_option("channel")
+                    if not channel_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /poll channel channel: #general"},
+                        }
+                    updated = business.set_poll_channel(str(channel_value))
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Channel du sondage configure: <#{updated}>"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "message":
+                try:
+                    message_value = get_sub_option("message")
+                    if not message_value:
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Utilisation: /poll message message: Qui est dispo cette semaine ?"},
+                        }
+                    updated = business.set_poll_message(message_value)
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Message du sondage configure: {updated}"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
+            if subcommand_name == "send":
+                result = await business.post_poll_message()
+                if result:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Sondage poste dans <#{result['channel_id']}>"},
+                    }
+                else:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": "Erreur: channel ou message du sondage non configure"},
+                    }
+
+            if subcommand_name == "ping":
+                try:
+                    role_value = get_sub_option("role")
+                    if role_value is None:
+                        # No role specified, clear the ping role
+                        updated = business.set_poll_ping_role(None)
+                        return {
+                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                            "data": {"content": "Ping du role desactive"},
+                        }
+                    updated = business.set_poll_ping_role(str(role_value))
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Role pour le ping configure: <@&{updated}>"},
+                    }
+                except ValueError as e:
+                    return {
+                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+                        "data": {"content": f"Erreur: {e}"},
+                    }
+
         error(f"unknown command: {name}")
         return {"error": "unknown command"}
 
@@ -372,6 +582,23 @@ async def handle_interaction(body: dict) -> dict:
                     "choices": [{"name": d, "value": d} for d in filtered[:25]],
                 },
             }
+
+        # Poll autocomplete
+        if name == "poll":
+            if subcommand_name == "day" and focused and focused["name"] == "day":
+                return {
+                    "type": 8,
+                    "data": {
+                        "choices": DAY_CHOICES,
+                    },
+                }
+            if subcommand_name == "pause" and focused and focused["name"] == "state":
+                return {
+                    "type": 8,
+                    "data": {
+                        "choices": PAUSE_CHOICES,
+                    },
+                }
 
         error(f"Autocomplete not implemented for {{name: {name}, subcommand: {subcommand_name}}}")
         return {"type": 8, "data": {"choices": []}}

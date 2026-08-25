@@ -56,3 +56,25 @@ def reset_reminder_state():
     reminder.reminder_minute = original_minute
     reminder.reminder_channel_id = original_channel
     reminder.reminder_message_template = original_message
+
+
+@pytest.fixture(autouse=True)
+def reset_poll_state():
+    """Reset poll state before each test."""
+    from bot import poll
+
+    original_day = poll._poll_day
+    original_channel = poll._poll_channel_id
+    original_message = poll._poll_message
+    original_pause_enabled = poll._poll_pause_enabled
+    original_pause_until = poll._poll_pause_until
+    original_task = poll._poll_task
+
+    yield
+
+    poll._poll_day = original_day
+    poll._poll_channel_id = original_channel
+    poll._poll_message = original_message
+    poll._poll_pause_enabled = original_pause_enabled
+    poll._poll_pause_until = original_pause_until
+    poll._poll_task = original_task
