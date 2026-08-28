@@ -36,7 +36,7 @@ class TestSaveRaidDatesTriggersCalendarUpdate:
     async def test_schedules_calendar_update(self):
         with patch("bot.business._cleanup_past_dates_and_persist"), \
              patch("bot.dates.save_raid_dates"), \
-             patch("bot.storage.write_dates_to_file"), \
+             patch("bot.state.set_dates"), \
              patch.object(business.calendar, "update_calendar_message", new_callable=AsyncMock) as mock_update:
             business.save_raid_dates("15/05/26")
             # The update task should have been scheduled
@@ -50,23 +50,11 @@ class TestDeleteRaidDatesTriggersCalendarUpdate:
     async def test_schedules_calendar_update(self):
         with patch("bot.business._cleanup_past_dates_and_persist"), \
              patch("bot.dates.delete_raid_dates"), \
-             patch("bot.storage.write_dates_to_file"), \
+             patch("bot.state.set_dates"), \
              patch.object(business.calendar, "update_calendar_message", new_callable=AsyncMock) as mock_update:
             business.delete_raid_dates("15/05/26")
             # The update task should have been scheduled
             assert business._calendar_update_task is not None
-
-
-class TestSetCalendarTitleTriggersUpdate:
-    """Tests that set_calendar_title triggers a calendar update."""
-
-    @pytest.mark.asyncio
-    async def test_schedules_calendar_update(self):
-        with patch.object(business.calendar, "set_calendar_title", return_value="New template"):
-            with patch.object(business.calendar, "update_calendar_message", new_callable=AsyncMock):
-                result = business.set_calendar_message("New template")
-                assert result == "New template"
-                assert business._calendar_update_task is not None
 
 
 class TestDailyCheck:

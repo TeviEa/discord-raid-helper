@@ -61,19 +61,6 @@ REMINDER_COMMAND = {
     "options": [
         {
             "type": 1,  # Subcommand
-            "name": "time",
-            "description": "Definit l'heure de rappel (UTC)",
-            "options": [
-                {
-                    "type": 3,  # String
-                    "name": "time",
-                    "description": "Heure de rappel au format HH:mm (24h) en UTC",
-                    "required": True,
-                },
-            ],
-        },
-        {
-            "type": 1,  # Subcommand
             "name": "channel",
             "description": "Definit le channel de rappel",
             "options": [
@@ -122,32 +109,6 @@ CALENDAR_COMMAND = {
                     "type": 7,  # Channel
                     "name": "channel",
                     "description": "Channel pour le calendrier",
-                    "required": True,
-                },
-            ],
-        },
-        {
-            "type": 1,  # Subcommand
-            "name": "title",
-            "description": "Definit le titre du calendrier",
-            "options": [
-                {
-                    "type": 3,  # String
-                    "name": "title",
-                    "description": "Titre du calendrier (max 256 caracteres)",
-                    "required": True,
-                },
-            ],
-        },
-        {
-            "type": 1,  # Subcommand
-            "name": "color",
-            "description": "Definit la couleur du calendrier",
-            "options": [
-                {
-                    "type": 4,  # Integer
-                    "name": "color",
-                    "description": "Couleur hexadecimal (ex: 16711680 pour rouge)",
                     "required": True,
                 },
             ],
@@ -225,19 +186,6 @@ POLL_COMMAND = {
                     "type": 7,  # Channel
                     "name": "channel",
                     "description": "Channel du sondage",
-                    "required": True,
-                },
-            ],
-        },
-        {
-            "type": 1,  # Subcommand
-            "name": "message",
-            "description": "Definit le message du sondage",
-            "options": [
-                {
-                    "type": 3,  # String
-                    "name": "message",
-                    "description": "Message du sondage",
                     "required": True,
                 },
             ],

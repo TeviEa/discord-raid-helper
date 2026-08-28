@@ -2,12 +2,13 @@
 
 from datetime import datetime, timedelta
 
+from . import config, state
+
 __all__ = [
     "set_poll_day",
     "get_poll_day",
     "set_poll_channel",
     "get_poll_channel",
-    "set_poll_message",
     "get_poll_message",
     "set_poll_pause",
     "get_poll_pause",
@@ -17,7 +18,7 @@ __all__ = [
     "get_poll_ping_role",
     "build_poll_message",
     "post_poll_message",
-    "poll_config",
+    "get_poll_config",
 ]
 
 # --- State ---
@@ -31,14 +32,10 @@ _poll_ping_role: str | None = None  # Role ID to ping after poll
 # Track pending poll task to avoid duplicates
 _poll_task = None
 
-# Discord native poll duration in hours (max 1008 = 7 days)
-# Change this to adjust how long the poll stays open
-_POLL_DURATION_HOURS = 48  # 2 days
-
-# Hour and minute (UTC) when the poll is sent daily
-# Change these to adjust when the poll is sent
-_POLL_SEND_HOUR = 8
-_POLL_SEND_MINUTE = 0
+# --- Static config from config.py ---
+_POLL_DURATION_HOURS = config.get("poll.durationHours")
+_POLL_SEND_HOUR = config.get("poll.sendHour")
+_POLL_SEND_MINUTE = config.get("poll.sendMinute")
 
 # Day of week mapping (0=Monday, 6=Sunday)
 _DAY_MAP = {
@@ -74,8 +71,7 @@ _DAY_EMOJIS = {
 
 # Days of the week when raids occur (remove from poll options)
 # Format: English day names (monday, tuesday, ..., sunday)
-# Change this list to exclude raid days from poll options
-RAID_DAYS = ["tuesday", "thursday"]  # Example: raids on Tuesday and Thursday
+RAID_DAYS = config.get("raid.days")
 
 
 def set_poll_day(day: str) -> str:
@@ -99,7 +95,7 @@ def set_poll_day(day: str) -> str:
 
     global _poll_day
     _poll_day = day_lower
-    _save_poll_config()
+    state.set_poll_day(day_lower)
     return _poll_day
 
 
@@ -126,40 +122,13 @@ def set_poll_channel(channel_id: str | None) -> str | None:
 
     global _poll_channel_id
     _poll_channel_id = channel_id
-    _save_poll_config()
+    state.set_poll_channel(channel_id)
     return _poll_channel_id
 
 
 def get_poll_channel() -> str | None:
     """Get the current poll channel ID."""
     return _poll_channel_id
-
-
-def set_poll_message(message: str) -> str:
-    """Set the poll question.
-
-    Args:
-        message: The poll question (non-empty, max 200 chars for Discord poll).
-
-    Returns:
-        The new message.
-
-    Raises:
-        ValueError: If message is empty or too long.
-    """
-    if not isinstance(message, str):
-        raise ValueError("Poll message must be a string")
-
-    stripped = message.strip()
-    if not stripped:
-        raise ValueError("Poll message cannot be empty")
-    if len(stripped) > 200:
-        raise ValueError("Poll message cannot exceed 200 characters (Discord poll limit)")
-
-    global _poll_message
-    _poll_message = stripped
-    _save_poll_config()
-    return _poll_message
 
 
 def get_poll_message() -> str:
@@ -178,7 +147,7 @@ def set_poll_pause(enabled: bool) -> bool:
     """
     global _poll_pause_enabled
     _poll_pause_enabled = enabled
-    _save_poll_config()
+    state.set_poll_pause_enabled(enabled)
     return _poll_pause_enabled
 
 
@@ -210,7 +179,7 @@ def set_poll_pause_until(until: str) -> str:
         _poll_pause_until = until.strip()
     else:
         _poll_pause_until = ""
-    _save_poll_config()
+    state.set_poll_pause_until(_poll_pause_until)
     return _poll_pause_until
 
 
@@ -237,7 +206,7 @@ def set_poll_ping_role(role_id: str | None) -> str | None:
 
     global _poll_ping_role
     _poll_ping_role = role_id
-    _save_poll_config()
+    state.set_poll_ping_role(role_id)
     return _poll_ping_role
 
 
@@ -270,7 +239,8 @@ def _should_send_poll(now: datetime | None = None) -> bool:
                     # Pause lifted, update state
                     _poll_pause_enabled = False
                     _poll_pause_until = ""
-                    _save_poll_config()
+                    state.set_poll_pause_enabled(False)
+                    state.set_poll_pause_until("")
             except ValueError:
                 pass  # Invalid date, keep paused
 
@@ -307,11 +277,12 @@ def _get_poll_dates(now: datetime | None = None) -> list[dict]:
     # Build set of RAID_DAYS weekday numbers for fast lookup
     raid_weekdays = {_DAY_MAP[d] for d in RAID_DAYS if d in _DAY_MAP}
 
-    # Start from the next occurrence of the configured day
+    # Start from the configured day of the current week
     target_day = _DAY_MAP.get(_poll_day, 1)  # Default to tuesday
     days_ahead = (target_day - now.weekday() + 7) % 7
     if days_ahead == 0:
-        days_ahead = 7  # Next week
+        # Configured day is today, start from next week
+        days_ahead = 7
 
     start_date = now + timedelta(days=days_ahead)
 
@@ -381,7 +352,7 @@ async def post_poll_message() -> dict | None:
     Returns:
         Dict with 'channel_id' and 'message_id' on success, or None on failure.
     """
-    from . import discord_api
+    from . import dates, discord_api
 
     if not _poll_channel_id:
         return None
@@ -394,7 +365,7 @@ async def post_poll_message() -> dict | None:
             body=body,
             use_form=True,
         )
-        _save_poll_config()
+        state.set_poll_last_sent(dates.get_today_date_string())
 
         # Post a follow-up message that pings the configured role
         if _poll_ping_role:
@@ -438,40 +409,16 @@ def get_poll_config() -> dict:
     }
 
 
-def _load_poll_config() -> dict:
-    """Load poll configuration from storage."""
-    data = storage.load_data()
-    return data.get("poll", {})
-
-
-def _save_poll_config() -> None:
-    """Save poll configuration to storage."""
-    data = storage.load_data()
-    data["poll"] = {
-        "day": _poll_day,
-        "channelId": _poll_channel_id,
-        "message": _poll_message,
-        "pause": {
-            "enabled": _poll_pause_enabled,
-            "until": _poll_pause_until,
-        },
-        "pingRole": _poll_ping_role,
-    }
-    storage.save_data(data)
-
-
-# Import storage at module level
-from . import storage
-
 # Initialize from disk
 def init_poll() -> None:
-    """Initialize poll state from storage."""
+    """Initialize poll state from config and state."""
     global _poll_day, _poll_channel_id, _poll_message, _poll_pause_enabled, _poll_pause_until, _poll_ping_role
 
-    config = _load_poll_config()
-    _poll_day = config.get("day", "")
-    _poll_channel_id = config.get("channelId")
-    _poll_message = config.get("message", "")
-    _poll_pause_enabled = config.get("pause", {}).get("enabled", False)
-    _poll_pause_until = config.get("pause", {}).get("until", "")
-    _poll_ping_role = config.get("pingRole")
+    # Static config from config.json
+    _poll_message = config.get("poll.message")
+    # Dynamic state from state.json
+    _poll_day = state.get_poll_day()
+    _poll_channel_id = state.get_poll_channel()
+    _poll_pause_enabled = state.get_poll_pause_enabled()
+    _poll_pause_until = state.get_poll_pause_until()
+    _poll_ping_role = state.get_poll_ping_role()

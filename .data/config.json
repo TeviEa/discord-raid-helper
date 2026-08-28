@@ -1,0 +1,18 @@
+{
+  "raid": {
+    "days": ["tuesday","thursday"]
+  },
+  "reminder": {
+    "time": "08:00"
+  },
+  "calendar": {
+    "title": "\ud83d\udd14 Prochaines sessions \ud83d\udd14",
+    "color": 3900150
+  },
+  "poll": {
+    "message": "Session bonus ?",
+    "durationHours": 24,
+    "sendHour": 8,
+    "sendMinute": 0
+  }
+}

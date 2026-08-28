@@ -4,8 +4,8 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
+from bot import reminder
 from bot.reminder import (
-    set_dates_reminder_time,
     get_dates_reminder_time,
     set_dates_reminder_channel,
     set_dates_reminder_message,
@@ -16,51 +16,18 @@ from bot.reminder import (
 )
 
 
-class TestSetDatesReminderTime:
-    def test_sets_valid_time(self):
-        with patch("bot.reminder._save_reminder_config") as mock_save:
-            result = set_dates_reminder_time("18:30")
-            assert result == "18:30"
-            mock_save.assert_called_once()
-
-    def test_sets_midnight(self):
-        with patch("bot.reminder._save_reminder_config"):
-            assert set_dates_reminder_time("00:00") == "00:00"
-
-    def test_sets_end_of_day(self):
-        with patch("bot.reminder._save_reminder_config"):
-            assert set_dates_reminder_time("23:59") == "23:59"
-
-    def test_rejects_invalid_format(self):
-        with pytest.raises(ValueError, match="HH:mm format"):
-            set_dates_reminder_time("abc")
-
-    def test_rejects_invalid_hour(self):
-        with pytest.raises(ValueError, match="valid 24h time"):
-            set_dates_reminder_time("25:00")
-
-    def test_rejects_invalid_minute(self):
-        with pytest.raises(ValueError, match="valid 24h time"):
-            set_dates_reminder_time("18:60")
-
-    def test_rejects_non_string(self):
-        with pytest.raises(ValueError, match="must be a string"):
-            set_dates_reminder_time(123)
-
-
 class TestGetDatesReminderTime:
     def test_returns_configured_time(self):
-        with patch("bot.reminder._save_reminder_config"):
-            set_dates_reminder_time("14:30")
+        reminder.reminder_hour, reminder.reminder_minute = 14, 30
         assert get_dates_reminder_time() == "14:30"
 
 
 class TestSetDatesReminderChannel:
     def test_sets_valid_channel(self):
-        with patch("bot.reminder._save_reminder_config") as mock_save:
+        with patch("bot.state.set_reminder_channel", return_value="123456789") as mock_save:
             result = set_dates_reminder_channel("123456789")
             assert result == "123456789"
-            mock_save.assert_called_once()
+            mock_save.assert_called_once_with("123456789")
 
     def test_rejects_non_string(self):
         with pytest.raises(ValueError, match="must be a valid Discord channel id"):
@@ -75,13 +42,13 @@ class TestSetDatesReminderChannel:
 
 class TestSetDatesReminderMessage:
     def test_sets_valid_message(self):
-        with patch("bot.reminder._save_reminder_config") as mock_save:
-            msg = "Rappel raid aujourd'hui ({date})"
+        msg = "Rappel raid aujourd'hui ({date})"
+        with patch("bot.state.set_reminder_message", return_value=msg) as mock_save:
             assert set_dates_reminder_message(msg) == msg
-            mock_save.assert_called_once()
+            mock_save.assert_called_once_with(msg)
 
     def test_trims_whitespace(self):
-        with patch("bot.reminder._save_reminder_config"):
+        with patch("bot.state.set_reminder_message", return_value="test"):
             assert set_dates_reminder_message("  test  ") == "test"
 
     def test_rejects_empty(self):
@@ -103,22 +70,19 @@ class TestSetDatesReminderMessage:
 
 class TestFormatDatesReminderMessage:
     def test_replaces_date_placeholder(self):
-        with patch("bot.reminder._save_reminder_config"):
-            set_dates_reminder_message("Rappel: {date}")
+        set_dates_reminder_message("Rappel: {date}")
         assert format_dates_reminder_message("15/05/26") == "Rappel: 15/05/26"
 
 
 class TestGetDatesReminderChannel:
     def test_returns_configured_channel(self):
-        with patch("bot.reminder._save_reminder_config"):
-            set_dates_reminder_channel("123456")
+        set_dates_reminder_channel("123456")
         assert get_dates_reminder_channel() == "123456"
 
 
 class TestGetDatesReminderMessage:
     def test_returns_configured_message(self):
-        with patch("bot.reminder._save_reminder_config"):
-            set_dates_reminder_message("test message")
+        set_dates_reminder_message("test message")
         assert get_dates_reminder_message() == "test message"
 
 
@@ -130,17 +94,16 @@ class TestGetDueDateReminders:
         assert result == []
 
     def test_empty_when_no_date_for_today(self):
-        with patch("bot.reminder._save_reminder_config"):
-            set_dates_reminder_time("14:00")
+        reminder.reminder_hour, reminder.reminder_minute = 14, 0
+        reminder.reminder_channel_id = "123456"
         mock_has_date = MagicMock(return_value=False)
         now = datetime(2026, 6, 15, 14, 0)
         result = get_due_date_reminders(mock_has_date, now)
         assert result == []
 
     def test_returns_reminder_when_time_matches(self):
-        with patch("bot.reminder._save_reminder_config"):
-            set_dates_reminder_time("10:00")
-            set_dates_reminder_channel("123456")
+        reminder.reminder_hour, reminder.reminder_minute = 10, 0
+        reminder.reminder_channel_id = "123456"
         mock_has_date = MagicMock(return_value=True)
         now = datetime(2026, 6, 15, 10, 0)
         result = get_due_date_reminders(mock_has_date, now)
@@ -149,9 +112,8 @@ class TestGetDueDateReminders:
         assert "date" in result[0]
 
     def test_empty_when_no_channel(self):
-        with patch("bot.reminder._save_reminder_config"):
-            set_dates_reminder_time("10:00")
-            set_dates_reminder_channel(None)
+        reminder.reminder_hour, reminder.reminder_minute = 10, 0
+        reminder.reminder_channel_id = None
         mock_has_date = MagicMock(return_value=True)
         now = datetime(2026, 6, 15, 10, 0)
         result = get_due_date_reminders(mock_has_date, now)

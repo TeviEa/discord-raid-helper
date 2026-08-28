@@ -4,10 +4,9 @@ import re
 from datetime import datetime
 from typing import Callable
 
-from . import dates, storage
+from . import config, dates, state
 
 __all__ = [
-    "set_dates_reminder_time",
     "get_dates_reminder_time",
     "set_dates_reminder_channel",
     "set_dates_reminder_message",
@@ -18,62 +17,26 @@ __all__ = [
 ]
 
 _time_re = re.compile(r"^(\d{2}):(\d{2})$")
-reminder_hour: int = 18
-reminder_minute: int = 0
+
+# Static config from config.json
+_reminder_time = config.get("reminder.time")
+reminder_hour: int = int(_reminder_time.split(":")[0])
+reminder_minute: int = int(_reminder_time.split(":")[1])
+
+# Dynamic state from state.json
 reminder_channel_id: str | None = None
-reminder_message_template: str = "Rappel raid: la date {date} est aujourd'hui."
+reminder_message_template: str = ""
 
 
-def _load_reminder_config() -> None:
-    """Load reminder config from disk."""
-    global reminder_hour, reminder_minute, reminder_channel_id, reminder_message_template
-    data = storage.load_data()
-    if data and data.get("reminder"):
-        cfg = data["reminder"]
-        if isinstance(cfg.get("time"), str):
-            m = _time_re.match(cfg["time"].strip())
-            if m:
-                reminder_hour = int(m.group(1))
-                reminder_minute = int(m.group(2))
-        if isinstance(cfg.get("channelId"), str):
-            reminder_channel_id = cfg["channelId"]
-        if isinstance(cfg.get("message"), str):
-            reminder_message_template = cfg["message"]
-
-
-def _save_reminder_config() -> None:
-    """Save reminder config to disk."""
-    data = storage.load_data()
-    data["dates"] = data.get("dates", []) if isinstance(data.get("dates"), list) else (data.get("dates", []) if data.get("dates") else [])
-    data["reminder"] = {
-        "time": f"{str(reminder_hour).zfill(2)}:{str(reminder_minute).zfill(2)}",
-        "channelId": reminder_channel_id,
-        "message": reminder_message_template,
-    }
-    storage.save_data(data)
+def _load_reminder_state() -> None:
+    """Load reminder state from disk."""
+    global reminder_channel_id, reminder_message_template
+    reminder_channel_id = state.get_reminder_channel()
+    reminder_message_template = state.get_reminder_message()
 
 
 # Initialize from disk
-_load_reminder_config()
-
-
-def set_dates_reminder_time(time_input: str) -> str:
-    """Set the reminder time in HH:mm format."""
-    if not isinstance(time_input, str):
-        raise ValueError("Reminder time must be a string in HH:mm format")
-
-    match = _time_re.match(time_input.strip())
-    if not match:
-        raise ValueError("Reminder time must be in HH:mm format")
-
-    hour, minute = int(match.group(1)), int(match.group(2))
-    if hour > 23 or minute > 59:
-        raise ValueError("Reminder time must be a valid 24h time (HH:mm)")
-
-    global reminder_hour, reminder_minute
-    reminder_hour, reminder_minute = hour, minute
-    _save_reminder_config()
-    return get_dates_reminder_time()
+_load_reminder_state()
 
 
 def get_dates_reminder_time() -> str:
@@ -89,7 +52,7 @@ def set_dates_reminder_channel(channel_id: str | None) -> str | None:
 
     global reminder_channel_id
     reminder_channel_id = channel_id
-    _save_reminder_config()
+    state.set_reminder_channel(channel_id)
     return reminder_channel_id
 
 
@@ -106,7 +69,7 @@ def set_dates_reminder_message(message_input: str) -> str:
 
     global reminder_message_template
     reminder_message_template = trimmed
-    _save_reminder_config()
+    state.set_reminder_message(trimmed)
     return reminder_message_template
 
 

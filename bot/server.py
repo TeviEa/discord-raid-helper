@@ -7,7 +7,7 @@ from datetime import datetime
 
 from discord_interactions import InteractionResponseType, InteractionType, verify_key
 
-from . import business, calendar, dates, discord_api, poll, reminder
+from . import business, calendar, config, dates, discord_api, poll, reminder, state
 from .commands import ALL_COMMANDS, DAY_CHOICES, PAUSE_CHOICES
 
 PORT = int(os.environ.get("PORT", 3333))
@@ -33,8 +33,6 @@ async def send_reminder_if_today_is_raid() -> bool:
         True if the reminder was sent, False otherwise.
     """
     global last_reminder_sent_key
-
-    from . import reminder
 
     today = dates.get_today_date_string()
     if not dates.has_raid_date(today):
@@ -75,6 +73,7 @@ async def send_reminder_if_today_is_raid() -> bool:
         )
         log(f"[reminder] sent for {today} to channel {channel_id}")
         last_reminder_sent_key = reminder_key
+        state.set_reminder_last_sent(today)
         return True
     except Exception as e:
         error("Error while sending reminder", e)
@@ -97,11 +96,13 @@ async def send_poll_if_today_is_configured() -> bool:
 
     # Check if today is the configured poll day
     if not poll._poll_day:
+        log(f"[poll] no poll day configured, skipping")
         return False
 
     day_of_week = datetime.now().weekday()  # 0=Monday, 6=Sunday
     target_day = poll._DAY_MAP.get(poll._poll_day, -1)
     if day_of_week != target_day:
+        log(f"[poll] today is weekday {day_of_week} ({datetime.now().strftime('%A')}), configured day is {poll._poll_day}, skipping")
         return False
 
     # Check pause status
@@ -134,6 +135,7 @@ async def send_poll_if_today_is_configured() -> bool:
         if result:
             log(f"[poll] sent for {today} to channel {poll._poll_channel_id}")
             last_poll_sent_key = poll_key
+            state.set_poll_last_sent(today)
             return True
         else:
             return False
@@ -170,8 +172,6 @@ async def daily_check() -> None:
     sent = await send_poll_if_today_is_configured()
     if sent:
         log("[daily] poll sent for today")
-    else:
-        log("[daily] poll skipped (not configured day or time has passed)")
 
 
 async def daily_check_loop() -> None:
@@ -281,28 +281,9 @@ async def handle_interaction(body: dict) -> dict:
                 return {
                     "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                     "data": {
-                        "content": f"Configuration du rappel :\n- heure : {time} UTC\n- salon : {channel_str}\n- message : {message}"
+                        "content": f"Configuration du rappel :\n- *heure : {time} UTC*\n- salon : {channel_str}\n- message : {message}"
                     },
                 }
-
-            if subcommand_name == "time":
-                try:
-                    time_value = get_sub_option("time")
-                    if not time_value:
-                        return {
-                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                            "data": {"content": "Utilisation: /reminder time time: 18:00"},
-                        }
-                    updated = business.set_dates_reminder_time(time_value)
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Heure de rappel configuree: {updated} UTC"},
-                    }
-                except ValueError as e:
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Erreur: {e}"},
-                    }
 
             if subcommand_name == "channel":
                 try:
@@ -371,45 +352,7 @@ async def handle_interaction(body: dict) -> dict:
                         "data": {"content": f"Erreur: {e}"},
                     }
 
-            if subcommand_name == "title":
-                try:
-                    title_value = get_sub_option("title")
-                    if not title_value:
-                        return {
-                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                            "data": {"content": "Utilisation: /calendar title title: Calendrier des raids"},
-                        }
-                    updated = business.set_calendar_message(title_value)
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Titre du calendrier configure: {updated}"},
-                    }
-                except ValueError as e:
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Erreur: {e}"},
-                    }
-
-            if subcommand_name == "color":
-                try:
-                    color_value = get_sub_option("color")
-                    if color_value is None:
-                        return {
-                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                            "data": {"content": "Utilisation: /calendar color color: 16711680"},
-                        }
-                    updated = business.set_calendar_color(int(color_value))
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Couleur du calendrier configuree: 0x{updated:06X}"},
-                    }
-                except ValueError as e:
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Erreur: {e}"},
-                    }
-
-            if subcommand_name == "delete":
+            if subcommand_name == "delete": 
                 deleted = await business.delete_calendar_message()
                 if deleted:
                     return {
@@ -431,6 +374,8 @@ async def handle_interaction(body: dict) -> dict:
                 pause_enabled = business.get_poll_pause()
                 pause_until = business.get_poll_pause_until()
                 ping_role = business.get_poll_ping_role()
+                send_hour = poll._POLL_SEND_HOUR
+                send_minute = poll._POLL_SEND_MINUTE
                 channel_str = f"<#{channel}>" if channel else "non defini"
                 pause_status = "en pause" if pause_enabled else "actif"
                 pause_until_str = pause_until if pause_until else "jamais"
@@ -438,11 +383,11 @@ async def handle_interaction(body: dict) -> dict:
                 return {
                     "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                     "data": {
-                        "content": f"Configuration du sondage :\n- jour : {day}\n- salon : {channel_str}\n- message : {message}\n- statut : {pause_status} (jusqu'au {pause_until_str})\n- ping role : {ping_str}"
+                        "content": f"Configuration du sondage :\n- jour : {day}\n- salon : {channel_str}\n- *message : {message}*\n- *heure d'envoi : {send_hour:02d}:{send_minute:02d}*\n- statut : {pause_status} (jusqu'au {pause_until_str})\n- ping role : {ping_str}"
                     },
                 }
 
-            if subcommand_name == "day":
+            if subcommand_name == "day": 
                 try:
                     day_value = get_sub_option("day")
                     if not day_value:
@@ -503,25 +448,6 @@ async def handle_interaction(body: dict) -> dict:
                     return {
                         "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
                         "data": {"content": f"Channel du sondage configure: <#{updated}>"},
-                    }
-                except ValueError as e:
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Erreur: {e}"},
-                    }
-
-            if subcommand_name == "message":
-                try:
-                    message_value = get_sub_option("message")
-                    if not message_value:
-                        return {
-                            "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                            "data": {"content": "Utilisation: /poll message message: Qui est dispo cette semaine ?"},
-                        }
-                    updated = business.set_poll_message(message_value)
-                    return {
-                        "type": InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-                        "data": {"content": f"Message du sondage configure: {updated}"},
                     }
                 except ValueError as e:
                     return {

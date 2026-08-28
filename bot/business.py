@@ -2,14 +2,14 @@
 
 from datetime import datetime
 
-from . import dates, storage, reminder, calendar, poll
+from . import config, dates, state, reminder, calendar, poll
 
 
 def _cleanup_past_dates_and_persist() -> None:
     """Remove past dates and persist to disk."""
     removed = dates.remove_past_dates()
     if removed:
-        storage.write_dates_to_file(dates.get_raid_dates_snapshot())
+        state.set_dates(dates.get_raid_dates_snapshot())
 
 
 def daily_check() -> bool:
@@ -24,15 +24,13 @@ def daily_check() -> bool:
 
 def init_raid_helper() -> None:
     """Initialize the bot: load data from disk, clean up past dates, restore calendar and poll config."""
-    stored = storage.load_dates_from_file()
+    stored = state.get_dates()
     dates.hydrate_raid_dates(stored)
     _cleanup_past_dates_and_persist()
 
-    config = calendar._load_calendar_config()
-    calendar._calendar_channel_id = config.get("channelId")
-    calendar._calendar_message_id = config.get("messageId")
-    calendar._calendar_title = config.get("title", "Calendrier des raids")
-    calendar._calendar_color = config.get("color", 0x3B82F6)
+    # Calendar state from state.json (title/color are already loaded from config.json)
+    calendar._calendar_channel_id = state.get_calendar_channel()
+    calendar._calendar_message_id = state.get_calendar_message_id()
 
     poll.init_poll()
 
@@ -42,7 +40,7 @@ def save_raid_dates(dates_input: str) -> list[str]:
     _cleanup_past_dates_and_persist()
     dates.save_raid_dates(dates_input)
     _cleanup_past_dates_and_persist()
-    storage.write_dates_to_file(dates.get_raid_dates_snapshot())
+    state.set_dates(dates.get_raid_dates_snapshot())
     _schedule_calendar_update()
     return dates.get_raid_dates_snapshot()
 
@@ -51,7 +49,7 @@ def delete_raid_dates(dates_input: str) -> list[str]:
     """Delete dates, clean up past, persist."""
     _cleanup_past_dates_and_persist()
     dates.delete_raid_dates(dates_input)
-    storage.write_dates_to_file(dates.get_raid_dates_snapshot())
+    state.set_dates(dates.get_raid_dates_snapshot())
     _schedule_calendar_update()
     return dates.get_raid_dates_snapshot()
 
@@ -85,7 +83,6 @@ def get_due_date_reminders(now: datetime | None = None) -> list[dict]:
 # Re-export for convenience
 from .dates import set_dates_display_max, get_raid_dates_snapshot
 from .reminder import (
-    set_dates_reminder_time,
     get_dates_reminder_time,
     set_dates_reminder_channel,
     set_dates_reminder_message,
@@ -96,22 +93,16 @@ from .reminder import (
 from .calendar import (
     set_calendar_channel,
     get_calendar_channel,
-    set_calendar_title,
-    get_calendar_title,
-    set_calendar_color,
-    get_calendar_color,
     build_calendar_embed,
     post_calendar_message,
     delete_calendar_message,
     update_calendar_message,
-    get_calendar_config,
 )
 from .poll import (
     set_poll_day,
     get_poll_day,
     set_poll_channel,
     get_poll_channel,
-    set_poll_message,
     get_poll_message,
     set_poll_pause,
     get_poll_pause,
@@ -124,12 +115,6 @@ from .poll import (
     get_poll_config,
 )
 
-
-def set_calendar_message(message: str) -> str:
-    """Set the calendar embed title and update the posted message."""
-    updated = calendar.set_calendar_title(message)
-    _schedule_calendar_update()
-    return updated
 
 # Initialize on import
 init_raid_helper()

@@ -63,41 +63,6 @@ class TestGetPollChannel:
         assert poll.get_poll_channel() == "123456789"
 
 
-class TestSetPollMessage:
-    """Tests for set_poll_message (poll question)."""
-
-    def test_sets_valid_message(self):
-        result = poll.set_poll_message("Qui est dispo ?")
-        assert result == "Qui est dispo ?"
-
-    def test_trims_whitespace(self):
-        result = poll.set_poll_message("  Qui est dispo ?  ")
-        assert result == "Qui est dispo ?"
-
-    def test_rejects_empty(self):
-        with pytest.raises(ValueError):
-            poll.set_poll_message("")
-
-    def test_rejects_whitespace_only(self):
-        with pytest.raises(ValueError):
-            poll.set_poll_message("   ")
-
-    def test_rejects_too_long(self):
-        with pytest.raises(ValueError):
-            poll.set_poll_message("x" * 201)
-
-    def test_accepts_max_length(self):
-        result = poll.set_poll_message("x" * 200)
-        assert result == "x" * 200
-
-
-class TestGetPollMessage:
-    """Tests for get_poll_message."""
-
-    def test_returns_configured_message(self):
-        poll.set_poll_message("Test message")
-        assert poll.get_poll_message() == "Test message"
-
 
 class TestSetPollPause:
     """Tests for set_poll_pause."""
@@ -154,7 +119,7 @@ class TestShouldSendPoll:
     def test_returns_true_when_configured(self):
         poll.set_poll_day("tuesday")
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_pause(False)
 
         now = datetime(2026, 8, 18, 21, 0, 0)  # Tuesday at 21:00
@@ -163,7 +128,7 @@ class TestShouldSendPoll:
     def test_returns_false_when_paused(self):
         poll.set_poll_day("tuesday")
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_pause(True)
 
         now = datetime(2026, 8, 18, 21, 0, 0)
@@ -172,7 +137,7 @@ class TestShouldSendPoll:
     def test_returns_false_when_not_configured_day(self):
         poll.set_poll_day("tuesday")
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_pause(False)
 
         now = datetime(2026, 8, 19, 21, 0, 0)  # Wednesday
@@ -197,7 +162,7 @@ class TestShouldSendPoll:
     def test_lifts_pause_when_until_date_reached(self):
         poll.set_poll_day("tuesday")
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_pause(True)
         poll.set_poll_pause_until("18/08/26")  # Same day
 
@@ -261,28 +226,28 @@ class TestBuildPollMessage:
     """Tests for build_poll_message (Discord native poll)."""
 
     def test_returns_dict(self):
-        poll.set_poll_message("Qui est dispo ?")
+        poll._poll_message = "Qui est dispo ?"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
         assert isinstance(body, dict)
 
     def test_includes_poll_structure(self):
-        poll.set_poll_message("Qui est dispo ?")
+        poll._poll_message = "Qui est dispo ?"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
         assert "poll" in body
 
     def test_includes_question(self):
-        poll.set_poll_message("Qui est dispo ?")
+        poll._poll_message = "Qui est dispo ?"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
         assert body["poll"]["question"]["text"] == "Qui est dispo ?"
 
     def test_has_correct_number_of_answers(self):
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
@@ -291,7 +256,7 @@ class TestBuildPollMessage:
         assert len(body["poll"]["answers"]) == expected_answers
 
     def test_answers_have_poll_media(self):
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
@@ -302,7 +267,7 @@ class TestBuildPollMessage:
             assert "name" in answer["poll_media"]["emoji"]
 
     def test_includes_day_options(self):
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
@@ -320,7 +285,7 @@ class TestBuildPollMessage:
             assert "/" in day_text  # Date format DD/MM
 
     def test_includes_not_available_option(self):
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
@@ -333,21 +298,21 @@ class TestBuildPollMessage:
         assert last_answer["poll_media"]["emoji"]["name"] == "\u274c"  # ❌
 
     def test_allows_multiselect(self):
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
         assert body["poll"]["allow_multiselect"] is True
 
     def test_has_layout_type(self):
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
         assert body["poll"]["layout_type"] == 1
 
     def test_has_duration(self):
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_day("tuesday")
         now = datetime(2026, 8, 18, 21, 0, 0)
         body = poll.build_poll_message(now)
@@ -360,15 +325,15 @@ class TestPostPollMessage:
     @pytest.mark.asyncio
     async def test_posts_poll_message(self):
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Qui est dispo ?")
+        poll._poll_message = "Qui est dispo ?"
         poll.set_poll_day("tuesday")
 
         with patch("bot.discord_api.discord_request", new_callable=AsyncMock, return_value={"id": "msg123"}) as mock_request:
             result = await poll.post_poll_message()
             assert result == {"channel_id": "123456789", "message_id": "msg123"}
 
-            # Verify poll structure was sent
-            call_args = mock_request.call_args
+            # Verify poll structure was sent (first call)
+            call_args = mock_request.call_args_list[0]
             body = call_args[1]["body"]
             assert "poll" in body
             assert body["poll"]["question"]["text"] == "Qui est dispo ?"
@@ -386,14 +351,14 @@ class TestPostPollMessage:
     @pytest.mark.asyncio
     async def test_returns_none_without_channel(self):
         poll.set_poll_channel(None)
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         result = await poll.post_poll_message()
         assert result is None
 
     @pytest.mark.asyncio
     async def test_handles_api_error(self):
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
 
         with patch("bot.discord_api.discord_request", new_callable=AsyncMock, side_effect=Exception("API error")):
             result = await poll.post_poll_message()
@@ -402,7 +367,7 @@ class TestPostPollMessage:
     @pytest.mark.asyncio
     async def test_posts_ping_message_after_poll(self):
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_ping_role("987654321")
 
         with patch("bot.discord_api.discord_request", new_callable=AsyncMock, return_value={"id": "msg123"}) as mock_request:
@@ -457,7 +422,7 @@ class TestGetPollConfig:
     def test_returns_full_config(self):
         poll.set_poll_day("tuesday")
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_pause(False)
         poll.set_poll_pause_until("")
         poll.set_poll_ping_role("987654321")
@@ -473,7 +438,7 @@ class TestGetPollConfig:
     def test_returns_none_ping_role(self):
         poll.set_poll_day("tuesday")
         poll.set_poll_channel("123456789")
-        poll.set_poll_message("Test")
+        poll._poll_message = "Test"
         poll.set_poll_pause(False)
         poll.set_poll_ping_role(None)
 

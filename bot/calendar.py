@@ -2,26 +2,24 @@
 
 from datetime import datetime
 
-from . import dates, storage
+from . import config, dates, state
 
 __all__ = [
     "set_calendar_channel",
     "get_calendar_channel",
-    "set_calendar_title",
-    "get_calendar_title",
-    "set_calendar_color",
-    "get_calendar_color",
     "build_calendar_embed",
     "post_calendar_message",
     "delete_calendar_message",
     "update_calendar_message",
-    "get_calendar_config",
 ]
 
+# Static config from config.json
+_calendar_title: str = config.get("calendar.title")
+_calendar_color: int = config.get("calendar.color")
+
+# Dynamic state from state.json
 _calendar_channel_id: str | None = None
 _calendar_message_id: str | None = None
-_calendar_title: str = "Calendrier des raids"
-_calendar_color: int = 0x3B82F6  # Discord blue
 
 
 def set_calendar_channel(channel_id: str | None) -> str | None:
@@ -45,7 +43,8 @@ def set_calendar_channel(channel_id: str | None) -> str | None:
     old_message_id = _calendar_message_id
     _calendar_channel_id = channel_id
     _calendar_message_id = None  # Reset message ID when channel changes
-    _save_calendar_config()
+    state.set_calendar_channel(channel_id)
+    state.set_calendar_message_id(None)
 
     # Delete old message when channel changes (not on first setup)
     if old_channel is not None and old_channel != channel_id:
@@ -84,55 +83,6 @@ async def _delete_message(channel_id: str, message_id: str) -> None:
 def get_calendar_channel() -> str | None:
     """Get the current calendar channel ID."""
     return _calendar_channel_id
-
-
-def set_calendar_title(title: str) -> str:
-    """Set the calendar embed title.
-
-    Args:
-        title: The embed title (non-empty, max 256 chars).
-
-    Returns:
-        The new title.
-
-    Raises:
-        ValueError: If title is empty, whitespace-only, or too long.
-    """
-    stripped = title.strip()
-    if not stripped:
-        raise ValueError("Calendar title cannot be empty")
-    if len(stripped) > 256:
-        raise ValueError("Calendar title cannot exceed 256 characters")
-
-    global _calendar_title
-    _calendar_title = stripped
-    _save_calendar_config()
-    return _calendar_title
-
-
-def get_calendar_title() -> str:
-    """Get the current calendar embed title."""
-    return _calendar_title
-
-
-def set_calendar_color(color: int) -> int:
-    """Set the calendar embed color.
-
-    Args:
-        color: Integer color value (0-0xFFFFFF).
-
-    Returns:
-        The new color.
-    """
-    global _calendar_color
-    _calendar_color = color
-    _save_calendar_config()
-    return _calendar_color
-
-
-def get_calendar_color() -> int:
-    """Get the current calendar embed color."""
-    return _calendar_color
 
 
 def _build_dates_list(now: datetime | None = None) -> str:
@@ -208,7 +158,7 @@ async def post_calendar_message() -> dict | None:
             body={"embeds": [embed]},
         )
         _calendar_message_id = data.get("id")
-        _save_calendar_config()
+        state.set_calendar_message_id(_calendar_message_id)
         return {"channel_id": _calendar_channel_id, "message_id": _calendar_message_id}
     except Exception as e:
         print(f"[{__name__}] Failed to post calendar message: {e}")
@@ -234,7 +184,7 @@ async def delete_calendar_message() -> bool:
             method="DELETE",
         )
         _calendar_message_id = None
-        _save_calendar_config()
+        state.set_calendar_message_id(None)
         return True
     except Exception as e:
         print(f"[{__name__}] Failed to delete calendar message: {e}")
@@ -271,32 +221,7 @@ async def update_calendar_message() -> dict | None:
         return None
 
 
-def get_calendar_config() -> dict:
-    """Get the current calendar configuration."""
-    return {
-        "channel": _calendar_channel_id,
-        "message_id": _calendar_message_id,
-        "title": _calendar_title,
-        "color": _calendar_color,
-    }
 
-
-def _load_calendar_config() -> dict:
-    """Load calendar configuration from storage."""
-    data = storage.load_data()
-    return data.get("calendar", {})
-
-
-def _save_calendar_config() -> None:
-    """Save calendar configuration to storage."""
-    data = storage.load_data()
-    data["calendar"] = {
-        "channelId": _calendar_channel_id,
-        "messageId": _calendar_message_id,
-        "title": _calendar_title,
-        "color": _calendar_color,
-    }
-    storage.save_data(data)
 
 
 
