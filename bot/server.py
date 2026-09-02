@@ -158,20 +158,27 @@ async def daily_check() -> None:
         await calendar.update_calendar_message()
         log("[daily] calendar updated")
 
-    # 3. If today is a raid date, schedule the reminder
-    if dates.has_raid_date(dates.get_today_date_string()):
-        sent = await send_reminder_if_today_is_raid()
-        if sent:
-            log("[daily] reminder sent for today")
+    # 3. Schedule reminder and poll concurrently (they may send at different times)
+    async def schedule_reminder():
+        if dates.has_raid_date(dates.get_today_date_string()):
+            sent = await send_reminder_if_today_is_raid()
+            if sent:
+                log("[daily] reminder sent for today")
+            else:
+                log("[daily] reminder skipped (time has passed)")
         else:
-            log("[daily] reminder skipped (time has passed)")
-    else:
-        log("[daily] today is not a raid date")
+            log("[daily] today is not a raid date")
 
-    # 4. Send poll if today is the configured day
-    sent = await send_poll_if_today_is_configured()
-    if sent:
-        log("[daily] poll sent for today")
+    async def schedule_poll():
+        sent = await send_poll_if_today_is_configured()
+        if sent:
+            log("[daily] poll sent for today")
+
+    await asyncio.gather(
+        schedule_reminder(),
+        schedule_poll(),
+        return_exceptions=True,
+    )
 
 
 async def daily_check_loop() -> None:
