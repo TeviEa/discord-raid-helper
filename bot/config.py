@@ -27,6 +27,8 @@ def _get_config_file_path():
 _DEFAULTS = {
     "raid": {
         "days": ["tuesday", "thursday"],
+        "time": "21:00",
+        "endTime": "23:59",
     },
     "reminder": {
         "time": "10:00",
@@ -40,6 +42,8 @@ _DEFAULTS = {
     "calendar": {
         "title": "🔔 Prochaines sessions 🔔",
         "color": 3900150,
+        "imageUrl": "",
+        "thumbnailUrl": "",
     },
 }
 
@@ -49,6 +53,8 @@ _DAY_NAMES = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
 
 _VALIDATORS = {
     "raid.days": lambda v: isinstance(v, list) and all(isinstance(d, str) and d.lower() in _DAY_NAMES for d in v),
+    "raid.time": lambda v: isinstance(v, str) and len(v) == 5 and v[2] == ":" and v[:2].isdigit() and v[3:].isdigit(),
+    "raid.endTime": lambda v: isinstance(v, str) and len(v) == 5 and v[2] == ":" and v[:2].isdigit() and v[3:].isdigit(),
     "reminder.time": lambda v: isinstance(v, str) and len(v) == 5 and v[2] == ":" and v[:2].isdigit() and v[3:].isdigit(),
     "poll.message": lambda v: isinstance(v, str) and len(v) > 0 and len(v) <= 200,
     "poll.durationHours": lambda v: isinstance(v, int) and 1 <= v <= 1008,
@@ -56,6 +62,8 @@ _VALIDATORS = {
     "poll.sendMinute": lambda v: isinstance(v, int) and 0 <= v <= 59,
     "calendar.title": lambda v: isinstance(v, str) and len(v) > 0 and len(v) <= 256,
     "calendar.color": lambda v: isinstance(v, int) and 0 <= v <= 0xFFFFFF,
+    "calendar.imageUrl": lambda v: isinstance(v, str) and (len(v) == 0 or v.startswith("http")),
+    "calendar.thumbnailUrl": lambda v: isinstance(v, str) and (len(v) == 0 or v.startswith("http")),
 }
 
 

@@ -1,8 +1,27 @@
 """Calendar feature: post and manage a calendar message showing raid dates."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from . import config, dates, state
+
+# Import format_raid_date for display
+format_raid_date = dates.format_raid_date
+
+# Raid time configuration from config.json (static)
+_RAID_TIME_STR = config.get("raid.time")
+_RAID_END_TIME_STR = config.get("raid.endTime")
+
+# Parse raid time into hour/minute
+_RAID_HOUR, _RAID_MINUTE = map(int, _RAID_TIME_STR.split(":"))
+_RAID_END_HOUR, _RAID_END_MINUTE = map(int, _RAID_END_TIME_STR.split(":"))
+
+# Paris timezone for DST-aware conversions
+PARIS = ZoneInfo("Europe/Paris")
+
+# GCal event title and location
+_GCAL_TITLE = "raid APT"
+_GCAL_LOCATION = "Eorzea"
 
 __all__ = [
     "set_calendar_channel",
@@ -16,6 +35,8 @@ __all__ = [
 # Static config from config.json
 _calendar_title: str = config.get("calendar.title")
 _calendar_color: int = config.get("calendar.color")
+_calendar_image_url: str = config.get("calendar.imageUrl") or ""
+_calendar_thumbnail_url: str = config.get("calendar.thumbnailUrl") or ""
 
 # Dynamic state from state.json
 _calendar_channel_id: str | None = None
@@ -85,6 +106,61 @@ def get_calendar_channel() -> str | None:
     return _calendar_channel_id
 
 
+def _parse_raid_datetime(date_str: str) -> tuple[datetime, datetime] | None:
+    """Parse a raid date string (dd/mm/yy) and return (start_dt, end_dt) in UTC.
+
+    Args:
+        date_str: Date in dd/mm/yy format.
+
+    Returns:
+        Tuple of (start_utc, end_utc) datetimes, or None if parsing fails.
+    """
+    try:
+        day, month, year = map(int, date_str.split("/"))
+        year += 2000  # Convert 2-digit year
+
+        # Create aware datetime in Paris timezone
+        start_local = datetime(year, month, day, _RAID_HOUR, _RAID_MINUTE, tzinfo=PARIS)
+        end_local = datetime(year, month, day, _RAID_END_HOUR, _RAID_END_MINUTE, tzinfo=PARIS)
+
+        # Convert to UTC
+        start_utc = start_local.astimezone(timezone.utc)
+        end_utc = end_local.astimezone(timezone.utc)
+
+        return start_utc, end_utc
+    except (ValueError, IndexError):
+        return None
+
+
+def build_gcal_link(date_str: str) -> str | None:
+    """Build a Google Calendar link for a raid date.
+
+    Args:
+        date_str: Date in dd/mm/yy format.
+
+    Returns:
+        GCal URL string, or None if date parsing fails.
+    """
+    parsed = _parse_raid_datetime(date_str)
+    if parsed is None:
+        return None
+
+    start_utc, end_utc = parsed
+
+    # Format dates for GCal: YYYYMMDDTHHmmssZ
+    start_str = start_utc.strftime("%Y%m%dT%H%M%SZ")
+    end_str = end_utc.strftime("%Y%m%dT%H%M%SZ")
+
+    # Build URL (spaces replaced with + for query params)
+    url = (
+        f"https://calendar.google.com/calendar/render?action=TEMPLATE"
+        f"&text={_GCAL_TITLE.replace(' ', '+')}"
+        f"&dates={start_str}/{end_str}"
+        f"&location={_GCAL_LOCATION.replace(' ', '+')}"
+    )
+    return url
+
+
 def _build_dates_list(now: datetime | None = None) -> str:
     """Build the bullet-point list of raid dates for embed description.
 
@@ -92,7 +168,7 @@ def _build_dates_list(now: datetime | None = None) -> str:
         now: Optional datetime for testing. Uses current time if not provided.
 
     Returns:
-        Formatted date list with today highlighted.
+        Formatted date list with today highlighted and GCal links.
     """
     now = now or datetime.now()
     today_str = dates.get_today_date_string(now)
@@ -101,17 +177,32 @@ def _build_dates_list(now: datetime | None = None) -> str:
     if not all_dates:
         return "Aucune date de raid enregistree."
 
-    # Sort dates
-    sorted_dates = sorted(all_dates, key=dates.to_sortable_timestamp)
+    # Sort dates (skip invalid dates)
+    valid_dates = []
+    for date in all_dates:
+        try:
+            valid_dates.append((date, dates.to_sortable_timestamp(date)))
+        except (ValueError, IndexError):
+            pass  # Skip invalid dates
 
-    # Build date list
+    valid_dates.sort(key=lambda x: x[1])
+    sorted_dates = [d[0] for d in valid_dates]
+
+    if not sorted_dates:
+        return "Aucune date de raid enregistree."
+
+    # Build date list with blockquoted GCal links
     date_lines = []
     for date in sorted_dates:
+        gcal_url = build_gcal_link(date)
         if date == today_str:
-            date_lines.append(f"- **{date}** (aujourd'hui)")
+            date_lines.append(f"📅 **{date}** *(aujourd'hui)*")
         else:
-            date_lines.append(f"- {date}")
-    return "\n".join(date_lines)
+            date_lines.append(f"📅 **{date}**")
+        link = f"> 🗓️ [Google Calendar]({gcal_url})" if gcal_url else "> —"
+        date_lines.append(link)
+        date_lines.append("")  # blank line between dates
+    return "\n".join(date_lines).rstrip()
 
 
 def build_calendar_embed(now: datetime | None = None) -> dict:
@@ -121,19 +212,85 @@ def build_calendar_embed(now: datetime | None = None) -> dict:
         now: Optional datetime for testing. Uses current time if not provided.
 
     Returns:
-        Discord embed dict with title, description, and footer.
+        Discord embed dict with title, description, fields, footer, image, and thumbnail.
     """
     now = now or datetime.now()
-    date_list = _build_dates_list(now)
+    today_str = dates.get_today_date_string(now)
 
-    return {
-        "title": _calendar_title,
-        "description": date_list,
-        "color": _calendar_color,
-        "footer": {
-            "text": f"Mis a jour le {dates.get_today_date_string(now)}",
-        },
-    }
+    all_dates = dates.get_raid_dates_snapshot()
+    if not all_dates:
+        embed = {
+            "title": _calendar_title,
+            "description": "Aucune date de raid enregistree.",
+            "color": _calendar_color,
+            "footer": {
+                "text": f"Mis a jour le {dates.get_today_date_string(now)}",
+            },
+        }
+    else:
+        # Sort dates (skip invalid dates)
+        valid_dates = []
+        for date in all_dates:
+            try:
+                valid_dates.append((date, dates.to_sortable_timestamp(date)))
+            except (ValueError, IndexError):
+                pass  # Skip invalid dates
+
+        valid_dates.sort(key=lambda x: x[1])
+        sorted_dates = [d[0] for d in valid_dates]
+
+        # Build fields
+        fields = []
+
+        # First field: next session (relative time, full width)
+        next_date = sorted_dates[0]
+        fields.append({
+            "name": "Prochaine session",
+            "value": dates.format_discord_date_relative(next_date),
+            "inline": False,
+        })
+
+        # Separator field
+        fields.append({
+            "name": "Dates",
+            "value": "-------",
+            "inline": False,
+        })
+
+        # Remaining fields: all dates (inline)
+        for date in sorted_dates:
+            gcal_url = build_gcal_link(date)
+            formatted = format_raid_date(date)
+            if date == today_str:
+                name = f"🗓️ **{formatted}** *(aujourd'hui)*"
+            else:
+                name = f"🗓️ **{formatted}**"
+            value = f"🌐 [Calendar]({gcal_url})" if gcal_url else "🗓️ —"
+            fields.append({
+                "name": name,
+                "value": value,
+                "inline": True,
+            })
+
+        embed = {
+            "title": _calendar_title,
+            "description": "Calendrier des raids APT",
+            "fields": fields,
+            "color": _calendar_color,
+            "footer": {
+                "text": f"Mis a jour le {dates.get_today_date_string(now)}",
+            },
+        }
+
+    # Add image if configured
+    if _calendar_image_url:
+        embed["image"] = {"url": _calendar_image_url}
+
+    # Add thumbnail if configured
+    if _calendar_thumbnail_url:
+        embed["thumbnail"] = {"url": _calendar_thumbnail_url}
+
+    return embed
 
 
 async def post_calendar_message() -> dict | None:

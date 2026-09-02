@@ -74,16 +74,19 @@ class TestBuildCalendarEmbed:
             calendar._calendar_title = "Calendrier des raids"
 
     def test_embed_has_description(self):
-        with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26", "22/05/26"]):
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26"]):
             embed = calendar.build_calendar_embed()
-            assert "15/05/26" in embed["description"]
-            assert "22/05/26" in embed["description"]
+            assert embed["description"] == "Calendrier des raids APT"
 
     def test_embed_highlights_today(self):
         today = get_today_date_string()
         with patch("bot.dates.get_raid_dates_snapshot", return_value=[today]):
             embed = calendar.build_calendar_embed()
-            assert f"**{today}** (aujourd'hui)" in embed["description"]
+            # First field is "Prochaine session", second is separator, third is the date
+            assert "Prochaine session" in embed["fields"][0]["name"]
+            assert "Dates" in embed["fields"][1]["name"]
+            assert "*(aujourd'hui)*" in embed["fields"][2]["name"]
+            assert "Calendar" in embed["fields"][2]["value"]
 
     def test_embed_has_color(self):
         calendar._calendar_color = 0xFF0000
@@ -95,7 +98,7 @@ class TestBuildCalendarEmbed:
             calendar._calendar_color = 0x3B82F6
 
     def test_embed_has_footer(self):
-        with patch("bot.dates.get_raid_dates_snapshot", return_value=[]):
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26"]):
             embed = calendar.build_calendar_embed()
             assert "footer" in embed
             assert "text" in embed["footer"]
@@ -105,14 +108,63 @@ class TestBuildCalendarEmbed:
         with patch("bot.dates.get_raid_dates_snapshot", return_value=[]):
             embed = calendar.build_calendar_embed()
             assert embed["description"] == "Aucune date de raid enregistree."
+            assert "fields" not in embed
 
     def test_embed_sorted_dates(self):
         with patch("bot.dates.get_raid_dates_snapshot", return_value=["22/05/26", "15/05/26"]):
             embed = calendar.build_calendar_embed()
-            lines = embed["description"].split("\n")
-            date_lines = [l for l in lines if l.startswith("- ")]
-            assert date_lines[0] == "- 15/05/26"
-            assert date_lines[1] == "- 22/05/26"
+            # First field is "Prochaine session", second is separator, dates start at index 2
+            assert "Prochaine session" in embed["fields"][0]["name"]
+            assert "Dates" in embed["fields"][1]["name"]
+            assert "Vendredi 15 Mai" in embed["fields"][2]["name"]
+            assert "Vendredi 22 Mai" in embed["fields"][3]["name"]
+
+    def test_embed_first_field_not_inline(self):
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26"]):
+            embed = calendar.build_calendar_embed()
+            # First field (Prochaine session) is not inline
+            assert embed["fields"][0]["inline"] is False
+            # Second field (Dates separator) is not inline
+            assert embed["fields"][1]["inline"] is False
+            # Third field (date) is inline
+            assert embed["fields"][2]["inline"] is True
+
+    def test_embed_first_field_is_next_session(self):
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26"]):
+            embed = calendar.build_calendar_embed()
+            assert "Prochaine session" in embed["fields"][0]["name"]
+            assert embed["fields"][0]["inline"] is False
+            # Value should be a Discord timestamp format
+            assert embed["fields"][0]["value"].startswith("<t:")
+            assert embed["fields"][0]["value"].endswith(":R>")
+
+    def test_embed_has_thumbnail_when_configured(self):
+        calendar._calendar_thumbnail_url = "https://example.com/thumb.png"
+        try:
+            with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26"]):
+                embed = calendar.build_calendar_embed()
+                assert "thumbnail" in embed
+                assert embed["thumbnail"]["url"] == "https://example.com/thumb.png"
+        finally:
+            calendar._calendar_thumbnail_url = ""
+
+    def test_embed_has_no_image_when_empty(self):
+        calendar._calendar_image_url = ""
+        try:
+            with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26"]):
+                embed = calendar.build_calendar_embed()
+                assert "image" not in embed
+        finally:
+            calendar._calendar_image_url = ""
+
+    def test_embed_has_no_thumbnail_when_empty(self):
+        calendar._calendar_thumbnail_url = ""
+        try:
+            with patch("bot.dates.get_raid_dates_snapshot", return_value=["15/05/26"]):
+                embed = calendar.build_calendar_embed()
+                assert "thumbnail" not in embed
+        finally:
+            calendar._calendar_thumbnail_url = ""
 
 
 class TestPostCalendarMessage:
@@ -249,6 +301,110 @@ class TestDeleteOldMessage:
         calendar._schedule_old_message_deletion("123456789", "msg_123")
         # Should still be the same task
         assert calendar._deletion_task is mock_task
+
+
+class TestParseRaidDatetime:
+    """Tests for _parse_raid_datetime."""
+
+    def test_parses_summer_date(self):
+        # 3 sept 2026 = été (UTC+2)
+        result = calendar._parse_raid_datetime("03/09/26")
+        assert result is not None
+        start_utc, end_utc = result
+        # 21h00 Paris été = 19h00 UTC
+        assert start_utc.hour == 19
+        assert start_utc.minute == 0
+        # 23h59 Paris été = 21h59 UTC
+        assert end_utc.hour == 21
+        assert end_utc.minute == 59
+
+    def test_parses_winter_date(self):
+        # 7 jan 2026 = hiver (UTC+1)
+        result = calendar._parse_raid_datetime("07/01/26")
+        assert result is not None
+        start_utc, end_utc = result
+        # 21h00 Paris hiver = 20h00 UTC
+        assert start_utc.hour == 20
+        assert start_utc.minute == 0
+        # 23h59 Paris hiver = 22h59 UTC
+        assert end_utc.hour == 22
+        assert end_utc.minute == 59
+
+    def test_rejects_invalid_date(self):
+        result = calendar._parse_raid_datetime("invalid")
+        assert result is None
+
+    def test_rejects_missing_date(self):
+        result = calendar._parse_raid_datetime("")
+        assert result is None
+
+
+class TestBuildGcalLink:
+    """Tests for build_gcal_link."""
+
+    def test_builds_valid_link(self):
+        link = calendar.build_gcal_link("03/09/26")
+        assert link is not None
+        assert "calendar.google.com" in link
+        assert "action=TEMPLATE" in link
+        assert "text=raid+APT" in link
+        assert "location=Eorzea" in link
+        assert "20260903T190000Z/20260903T215900Z" in link
+
+    def test_builds_valid_link_winter(self):
+        link = calendar.build_gcal_link("07/01/26")
+        assert link is not None
+        assert "20260107T200000Z/20260107T225900Z" in link
+
+    def test_returns_none_for_invalid_date(self):
+        link = calendar.build_gcal_link("invalid")
+        assert link is None
+
+
+class TestBuildDatesListWithGcal:
+    """Tests for _build_dates_list with GCal links."""
+
+    def test_includes_gcal_links(self):
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=["03/09/26", "07/01/26"]):
+            embed = calendar.build_calendar_embed()
+            # 1 "Prochaine session" + 1 separator + 2 dates = 4 fields
+            assert len(embed["fields"]) == 4
+            # First field is "Prochaine session"
+            assert "Prochaine session" in embed["fields"][0]["name"]
+            # Second field is separator
+            assert "Dates" in embed["fields"][1]["name"]
+            # Remaining fields contain the dates
+            all_names = [f["name"] for f in embed["fields"][2:]]
+            assert any("Jeudi 3 Sept." in n for n in all_names)
+            assert any("Mercredi 7 Janv." in n for n in all_names)
+            assert "Calendar" in embed["fields"][2]["value"]
+
+    def test_includes_gcal_link_for_today(self):
+        today = get_today_date_string()
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=[today]):
+            embed = calendar.build_calendar_embed()
+            # First field is "Prochaine session", second is separator, third is the date
+            assert "Prochaine session" in embed["fields"][0]["name"]
+            assert "Dates" in embed["fields"][1]["name"]
+            assert "*(aujourd'hui)*" in embed["fields"][2]["name"]
+            assert "Calendar" in embed["fields"][2]["value"]
+
+    def test_embed_fields_inline_multiple(self):
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=["03/09/26", "07/01/26"]):
+            embed = calendar.build_calendar_embed()
+            # First field (Prochaine session) is not inline
+            assert embed["fields"][0]["inline"] is False
+            # Second field (Dates separator) is not inline
+            assert embed["fields"][1]["inline"] is False
+            # Remaining fields (dates) are inline
+            for field in embed["fields"][2:]:
+                assert field["inline"] is True
+
+    def test_filters_invalid_dates(self):
+        with patch("bot.dates.get_raid_dates_snapshot", return_value=["invalid"]):
+            result = calendar._build_dates_list()
+            # Invalid dates are silently filtered out
+            assert result == "Aucune date de raid enregistree."
 
 
 

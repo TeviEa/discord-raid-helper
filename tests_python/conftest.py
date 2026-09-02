@@ -15,6 +15,8 @@ def reset_calendar_state():
     original_message_id = calendar._calendar_message_id
     original_title = calendar._calendar_title
     original_color = calendar._calendar_color
+    original_image_url = calendar._calendar_image_url
+    original_thumbnail_url = calendar._calendar_thumbnail_url
     original_deletion_task = calendar._deletion_task
 
     yield
@@ -23,6 +25,8 @@ def reset_calendar_state():
     calendar._calendar_message_id = original_message_id
     calendar._calendar_title = original_title
     calendar._calendar_color = original_color
+    calendar._calendar_image_url = original_image_url
+    calendar._calendar_thumbnail_url = original_thumbnail_url
     calendar._deletion_task = original_deletion_task
 
 

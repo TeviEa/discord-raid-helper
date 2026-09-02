@@ -7,6 +7,9 @@ from bot.dates import (
     is_valid_raid_date,
     to_sortable_timestamp,
     get_today_date_string,
+    format_raid_date,
+    format_discord_date_relative,
+    raid_datetime_to_timestamp,
     hydrate_raid_dates,
     get_raid_dates_snapshot,
     has_raid_date,
@@ -216,3 +219,53 @@ class TestHasRaidDate:
     def test_returns_false_for_nonexistent(self):
         hydrate_raid_dates(["15/05/26", "22/05/26"])
         assert has_raid_date("01/01/26") is False
+
+
+class TestFormatRaidDate:
+    def test_format_lundi(self):
+        # 14 sept 2026 = lundi
+        assert format_raid_date("14/09/26") == "Lundi 14 Sept."
+
+    def test_format_mercredi(self):
+        # 7 janv 2026 = mercredi
+        assert format_raid_date("07/01/26") == "Mercredi 7 Janv."
+
+    def test_format_vendredi(self):
+        # 15 mai 2026 = vendredi
+        assert format_raid_date("15/05/26") == "Vendredi 15 Mai"
+        # 22 mai 2026 = vendredi
+        assert format_raid_date("22/05/26") == "Vendredi 22 Mai"
+
+    def test_format_janvier(self):
+        # 1 janv 2026 = jeudi
+        assert format_raid_date("01/01/26") == "Jeudi 1 Janv."
+
+    def test_format_decembre(self):
+        # 31 déc 2026 = jeudi
+        assert format_raid_date("31/12/26") == "Jeudi 31 Déc."
+
+    def test_format_single_digit_day(self):
+        # 5 janv 2026 = lundi
+        assert format_raid_date("05/01/26") == "Lundi 5 Janv."
+
+
+class TestRaidDatetimeToTimestamp:
+    def test_returns_timestamp(self):
+        # Doit retourner un timestamp Unix valide
+        timestamp = raid_datetime_to_timestamp("03/09/26")
+        assert isinstance(timestamp, int)
+        assert timestamp > 1700000000  # After 2024
+
+
+class TestFormatDiscordDateRelative:
+    def test_format_relative(self):
+        result = format_discord_date_relative("03/09/26")
+        assert result.startswith("<t:")
+        assert result.endswith(":R>")
+
+    def test_format_relative_structure(self):
+        result = format_discord_date_relative("03/09/26")
+        import re
+        match = re.match(r"<t:(\d+):R>", result)
+        assert match is not None
+        assert int(match.group(1)) > 0

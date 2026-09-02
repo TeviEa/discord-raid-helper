@@ -2,11 +2,15 @@
 
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 __all__ = [
     "is_valid_raid_date",
     "to_sortable_timestamp",
     "get_today_date_string",
+    "format_raid_date",
+    "format_discord_date_relative",
+    "raid_datetime_to_timestamp",
     "hydrate_raid_dates",
     "get_raid_dates_snapshot",
     "has_raid_date",
@@ -21,6 +25,68 @@ _dates_memory: list[str] = []
 _display_max_dates: int = 10
 
 _DATE_RE = re.compile(r"^(\d{2})/(\d{2})/(\d{2})$")
+
+_DAYS_FR = {
+    0: "Lundi", 1: "Mardi", 2: "Mercredi", 3: "Jeudi",
+    4: "Vendredi", 5: "Samedi", 6: "Dimanche",
+}
+
+_MONTHS_FR = {
+    1: "Janv.", 2: "Févr.", 3: "Mars", 4: "Avr.",
+    5: "Mai", 6: "Juin", 7: "Juil", 8: "Août",
+    9: "Sept.", 10: "Oct.", 11: "Nov.", 12: "Déc.",
+}
+
+_PARIS = ZoneInfo("Europe/Paris")
+
+
+def format_raid_date(date_string: str) -> str:
+    """Format a DD/MM/YY date string to French: 'Lundi 14 Sept.'.
+
+    Args:
+        date_string: Date in DD/MM/YY format.
+
+    Returns:
+        Formatted date string in French.
+    """
+    day, month, year = (int(p) for p in date_string.split("/"))
+    dt = datetime(2000 + year, month, day)
+    return f"{_DAYS_FR[dt.weekday()]} {day} {_MONTHS_FR[month]}"
+
+
+def raid_datetime_to_timestamp(date_string: str) -> int:
+    """Convert a DD/MM/YY raid date to Unix timestamp (seconds).
+
+    Uses the configured raid time from config.py, with Europe/Paris timezone
+    to handle DST correctly.
+
+    Args:
+        date_string: Date in DD/MM/YY format.
+
+    Returns:
+        Unix timestamp in seconds (UTC).
+    """
+    from . import config
+
+    raid_time_str = config.get("raid.time")
+    raid_hour, raid_minute = map(int, raid_time_str.split(":"))
+
+    day, month, year = (int(p) for p in date_string.split("/"))
+    local_dt = datetime(2000 + year, month, day, raid_hour, raid_minute, tzinfo=_PARIS)
+    return int(local_dt.timestamp())
+
+
+def format_discord_date_relative(date_string: str) -> str:
+    """Format a DD/MM/YY date string to Discord relative format.
+
+    Args:
+        date_string: Date in DD/MM/YY format.
+
+    Returns:
+        Discord timestamp string: '<t:TIMESTAMP:R>'
+    """
+    timestamp = raid_datetime_to_timestamp(date_string)
+    return f"<t:{timestamp}:R>"
 
 
 def is_valid_raid_date(date_string: str) -> bool:
